@@ -110,6 +110,98 @@ test('it renders the vibration modal button and modal markup', function () {
         ->assertSeeHtml('HAPTIC');
 });
 
+test('it renders the background tasks modal button and markup', function () {
+    Livewire::test('time-clock')
+        ->assertSeeHtml('background-tasks-modal')
+        ->assertSeeHtml('TASKS');
+});
+
+test('it can create list update run and delete a background task via the modal actions', function () {
+    global $mockNativePhpCalls;
+    $mockNativePhpCalls = [];
+    $store = [];
+
+    $mockNativePhpCalls['BackgroundTasks.Create'] = function (string $payload) use (&$store) {
+        $data = json_decode($payload, true);
+        $task = array_merge($data, [
+            'id' => 'task-livewire-1',
+            'createdAt' => '2026-07-18T00:00:00Z',
+            'updatedAt' => '2026-07-18T00:00:00Z',
+        ]);
+        $store[$task['id']] = $task;
+
+        return json_encode(['success' => true, 'task' => $task]);
+    };
+
+    $mockNativePhpCalls['BackgroundTasks.List'] = function () use (&$store) {
+        return json_encode(['success' => true, 'tasks' => array_values($store)]);
+    };
+
+    $mockNativePhpCalls['BackgroundTasks.Get'] = function (string $payload) use (&$store) {
+        $id = json_decode($payload, true)['id'] ?? '';
+        if (! isset($store[$id])) {
+            return json_encode(['success' => false, 'error' => 'not found']);
+        }
+
+        return json_encode(['success' => true, 'task' => $store[$id]]);
+    };
+
+    $mockNativePhpCalls['BackgroundTasks.Update'] = function (string $payload) use (&$store) {
+        $data = json_decode($payload, true);
+        $id = $data['id'] ?? '';
+        if (! isset($store[$id])) {
+            return json_encode(['success' => false, 'error' => 'not found']);
+        }
+        $store[$id] = array_merge($store[$id], $data);
+
+        return json_encode(['success' => true, 'task' => $store[$id]]);
+    };
+
+    $mockNativePhpCalls['BackgroundTasks.Delete'] = function (string $payload) use (&$store) {
+        $id = json_decode($payload, true)['id'] ?? '';
+        unset($store[$id]);
+
+        return json_encode(['success' => true]);
+    };
+
+    $mockNativePhpCalls['BackgroundTasks.Sync'] = fn () => json_encode(['success' => true, 'count' => 1]);
+
+    $mockNativePhpCalls['BackgroundTasks.RunNow'] = function (string $payload) {
+        $data = json_decode($payload, true);
+
+        return json_encode([
+            'success' => true,
+            'results' => [[
+                'id' => $data['id'] ?? 'task-livewire-1',
+                'command' => 'inspire',
+                'output' => 'Simplicity is the ultimate sophistication.',
+                'success' => true,
+            ]],
+        ]);
+    };
+
+    Livewire::test('time-clock')
+        ->set('bgTaskName', 'test-inspire')
+        ->set('bgTaskCommand', 'inspire')
+        ->set('bgTaskInterval', 15)
+        ->call('bgCreate')
+        ->assertSet('bgTaskId', 'task-livewire-1')
+        ->assertSee('Task created')
+        ->call('bgRefreshList')
+        ->assertCount('bgTasks', 1)
+        ->set('bgTaskInterval', 30)
+        ->call('bgUpdate')
+        ->assertSee('Task updated')
+        ->call('bgSync')
+        ->assertSee('synced')
+        ->call('bgRunNow')
+        ->assertSee('RunNow completed')
+        ->assertSet('bgTaskOutput', fn ($out) => str_contains($out, 'Simplicity is the ultimate sophistication.'))
+        ->call('bgDelete')
+        ->assertSet('bgTaskId', '')
+        ->assertSee('Task deleted');
+});
+
 test('it can trigger vibration actions via Livewire', function () {
     global $mockNativePhpCalls;
     $mockNativePhpCalls = [];

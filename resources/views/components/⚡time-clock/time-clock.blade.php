@@ -74,34 +74,38 @@
             </div>
         </div>
 
-        <!-- 10-Key Pad -->
-        <div class="grid grid-cols-3 gap-3 w-full max-w-[280px] mx-auto">
+        <!-- 10-Key Pad: pure black labels on white keys (ignore dark-mode grey text) -->
+        <div class="grid grid-cols-3 gap-3 w-full max-w-[280px] mx-auto text-black">
             <template x-for="num in [1, 2, 3, 4, 5, 6, 7, 8, 9]">
                 <button type="button"
                         @click="addDigit(num.toString())"
-                        class="aspect-square flex items-center justify-center text-xl font-bold rounded-2xl bg-white hover:bg-zinc-100 active:scale-95 transition-all dark:bg-zinc-850 dark:hover:bg-zinc-800 text-slate-800 dark:text-zinc-100 border border-zinc-200/50 dark:border-zinc-700/50 shadow-sm">
-                    <span x-text="num"></span>
+                        class="aspect-square flex items-center justify-center text-xl font-bold rounded-2xl bg-white hover:bg-zinc-100 active:scale-95 transition-all !text-black dark:!text-black border border-zinc-300 shadow-sm"
+                        style="color: #000000;">
+                    <span class="!text-black dark:!text-black font-bold" style="color: #000000;" x-text="num"></span>
                 </button>
             </template>
             
             <!-- Clear Button -->
             <button type="button"
                     @click="clear()"
-                    class="aspect-square flex items-center justify-center text-xs font-black rounded-2xl bg-red-50/50 hover:bg-red-100 active:scale-95 transition-all dark:bg-red-950/20 dark:hover:bg-red-950/30 text-red-600 dark:text-red-400 border border-red-200/50 dark:border-red-900/50 shadow-sm">
+                    class="aspect-square flex items-center justify-center text-xs font-black rounded-2xl bg-white hover:bg-zinc-100 active:scale-95 transition-all !text-black dark:!text-black border border-zinc-300 shadow-sm"
+                    style="color: #000000;">
                 CLEAR
             </button>
             
             <!-- 0 Button -->
             <button type="button"
                     @click="addDigit('0')"
-                    class="aspect-square flex items-center justify-center text-xl font-bold rounded-2xl bg-white hover:bg-zinc-100 active:scale-95 transition-all dark:bg-zinc-850 dark:hover:bg-zinc-800 text-slate-800 dark:text-zinc-100 border border-zinc-200/50 dark:border-zinc-700/50 shadow-sm">
+                    class="aspect-square flex items-center justify-center text-xl font-bold rounded-2xl bg-white hover:bg-zinc-100 active:scale-95 transition-all !text-black dark:!text-black border border-zinc-300 shadow-sm"
+                    style="color: #000000;">
                 0
             </button>
             
             <!-- Delete (Backspace) Button -->
             <button type="button"
                     @click="backspace()"
-                    class="aspect-square flex items-center justify-center text-xs font-bold rounded-2xl bg-white hover:bg-zinc-100 active:scale-95 transition-all dark:bg-zinc-850 dark:hover:bg-zinc-800 text-slate-500 dark:text-zinc-400 border border-zinc-200/50 dark:border-zinc-700/50 shadow-sm">
+                    class="aspect-square flex items-center justify-center text-xs font-bold rounded-2xl bg-white hover:bg-zinc-100 active:scale-95 transition-all !text-black dark:!text-black border border-zinc-300 shadow-sm"
+                    style="color: #000000;">
                 DELETE
             </button>
         </div>
@@ -236,7 +240,13 @@
     <div class="flex flex-col gap-2 w-full mt-2">
         <div class="flex justify-between items-center px-1">
             <span class="text-[10px] font-bold uppercase tracking-wider text-zinc-400">GPS Geolocation</span>
-            <div class="flex gap-3">
+            <div class="flex gap-3 flex-wrap justify-end">
+                <flux:modal.trigger name="background-tasks-modal">
+                    <button type="button" wire:click="bgRefreshList" class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 flex items-center gap-1 text-[10px] font-bold transition-all">
+                        <flux:icon name="clock" class="w-3.5 h-3.5" />
+                        TASKS
+                    </button>
+                </flux:modal.trigger>
                 <flux:modal.trigger name="vibration-modal">
                     <button type="button" class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 flex items-center gap-1 text-[10px] font-bold transition-all">
                         <flux:icon name="bolt" class="w-3.5 h-3.5" />
@@ -316,6 +326,79 @@
             </button>
         </div>
     @endif
+
+    <flux:modal name="background-tasks-modal" class="md:w-[28rem] space-y-4">
+        <div class="space-y-1">
+            <flux:heading size="lg">Background Tasks</flux:heading>
+            <flux:text size="sm" class="text-zinc-500">
+                CRUD test for on-device scheduled artisan jobs (WorkManager / BGTaskScheduler).
+            </flux:text>
+        </div>
+
+        @if ($bgTaskStatusMessage)
+            <div class="p-2.5 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/40 text-blue-800 dark:text-blue-400 rounded-xl text-xs font-semibold">
+                {{ $bgTaskStatusMessage }}
+            </div>
+        @endif
+
+        <div class="space-y-3">
+            <flux:field>
+                <flux:label>Name</flux:label>
+                <flux:input wire:model="bgTaskName" placeholder="e.g. hourly-inspire" />
+            </flux:field>
+
+            <flux:field>
+                <flux:label>Artisan command</flux:label>
+                <flux:input wire:model="bgTaskCommand" placeholder="e.g. inspire" />
+            </flux:field>
+
+            <flux:field>
+                <flux:label>Interval (minutes, min 15)</flux:label>
+                <flux:input type="number" wire:model.number="bgTaskInterval" min="15" step="1" />
+            </flux:field>
+
+            <flux:field>
+                <flux:label>Task id (for update / delete / run)</flux:label>
+                <flux:input wire:model="bgTaskId" placeholder="Select from list or paste id" />
+            </flux:field>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+            <flux:button wire:click="bgCreate" variant="primary" class="w-full">Create</flux:button>
+            <flux:button wire:click="bgUpdate" variant="outline" class="w-full">Update</flux:button>
+            <flux:button wire:click="bgDelete" variant="danger" class="w-full">Delete</flux:button>
+            <flux:button wire:click="bgRefreshList" variant="ghost" class="w-full">List</flux:button>
+            <flux:button wire:click="bgSync" variant="filled" class="w-full">Sync OS</flux:button>
+            <flux:button wire:click="bgRunNow" variant="primary" class="w-full" icon="play">Run Now</flux:button>
+        </div>
+
+        @if (count($bgTasks) > 0)
+            <div class="space-y-2">
+                <flux:heading size="sm">Registered tasks</flux:heading>
+                <div class="max-h-40 overflow-y-auto space-y-1.5 rounded-xl border border-zinc-200/60 dark:border-zinc-800 p-2">
+                    @foreach ($bgTasks as $task)
+                        <button
+                            type="button"
+                            wire:key="bg-task-{{ $task['id'] ?? $loop->index }}"
+                            wire:click="bgSelect('{{ $task['id'] ?? '' }}')"
+                            class="w-full text-left px-2.5 py-2 rounded-lg bg-zinc-50 dark:bg-zinc-950/40 hover:bg-zinc-100 dark:hover:bg-zinc-900 border border-zinc-200/50 dark:border-zinc-800 text-xs"
+                        >
+                            <div class="font-bold text-zinc-800 dark:text-zinc-100">{{ $task['name'] ?? '—' }}</div>
+                            <div class="font-mono text-[10px] text-zinc-500 truncate">{{ $task['command'] ?? '' }} · {{ $task['intervalMinutes'] ?? '?' }}m</div>
+                            <div class="font-mono text-[9px] text-zinc-400 truncate">{{ $task['id'] ?? '' }}</div>
+                        </button>
+                    @endforeach
+                </div>
+            </div>
+        @endif
+
+        @if ($bgTaskOutput !== '')
+            <div class="space-y-1">
+                <flux:heading size="sm">Task output</flux:heading>
+                <pre class="p-3 max-h-48 overflow-auto rounded-xl bg-zinc-950 text-emerald-300 text-[11px] font-mono whitespace-pre-wrap break-all border border-zinc-800">{{ $bgTaskOutput }}</pre>
+            </div>
+        @endif
+    </flux:modal>
 
     <flux:modal name="vibration-modal" class="md:w-96 space-y-4">
         <div class="space-y-1">
