@@ -229,13 +229,21 @@
     <div class="flex flex-col gap-2 w-full mt-2">
         <div class="flex justify-between items-center px-1">
             <span class="text-[10px] font-bold uppercase tracking-wider text-zinc-400">GPS Geolocation</span>
-            <button type="button" wire:click="refreshLocation" class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 flex items-center gap-1 text-[10px] font-bold transition-all">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                REFRESH
-            </button>
+            <div class="flex gap-3">
+                <flux:modal.trigger name="secure-storage-modal">
+                    <button type="button" class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 flex items-center gap-1 text-[10px] font-bold transition-all">
+                        <flux:icon name="key" class="w-3.5 h-3.5" />
+                        KEYCHAIN
+                    </button>
+                </flux:modal.trigger>
+                <button type="button" wire:click="refreshLocation" class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 flex items-center gap-1 text-[10px] font-bold transition-all">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    REFRESH
+                </button>
+            </div>
         </div>
         
         <div x-data="{
@@ -295,5 +303,45 @@
             </button>
         </div>
     @endif
+
+    <flux:modal name="secure-storage-modal" class="md:w-96 space-y-4">
+        <div class="space-y-1">
+            <flux:heading size="lg">Secure Storage (Keychain)</flux:heading>
+            <flux:text size="sm" class="text-zinc-500">Save, retrieve, or delete sensitive data securely.</flux:text>
+        </div>
+
+        @if ($secureStorageStatusMessage)
+            <div class="p-2.5 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/40 text-blue-800 dark:text-blue-400 rounded-xl text-xs font-semibold">
+                {{ $secureStorageStatusMessage }}
+            </div>
+        @endif
+
+        <div class="space-y-3">
+            <flux:field>
+                <flux:label>Key</flux:label>
+                <flux:input wire:model="secureStorageKey" placeholder="e.g. auth_token" />
+            </flux:field>
+
+            <flux:field>
+                <flux:label>Value (Only required for Save)</flux:label>
+                <flux:input wire:model="secureStorageValue" placeholder="e.g. my-super-secret-token" />
+            </flux:field>
+
+            @if ($secureStorageResult)
+                <flux:field>
+                    <flux:label>Retrieved Value</flux:label>
+                    <div class="p-3 bg-zinc-50 dark:bg-zinc-950/40 border border-zinc-200/50 dark:border-zinc-800/50 rounded-xl font-mono text-sm break-all">
+                        {{ $secureStorageResult }}
+                    </div>
+                </flux:field>
+            @endif
+        </div>
+
+        <div class="flex gap-2 justify-end mt-4">
+            <flux:button wire:click="secureGet" variant="outline">Retrieve</flux:button>
+            <flux:button wire:click="secureDelete" variant="danger">Delete</flux:button>
+            <flux:button wire:click="secureSave" variant="primary">Save</flux:button>
+        </div>
+    </flux:modal>
 
 </div>

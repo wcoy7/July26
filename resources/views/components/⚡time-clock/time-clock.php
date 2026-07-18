@@ -10,6 +10,11 @@ new class extends Component
     public ?float $latitude = null;
     public ?float $longitude = null;
 
+    public string $secureStorageKey = '';
+    public string $secureStorageValue = '';
+    public string $secureStorageResult = '';
+    public string $secureStorageStatusMessage = '';
+
     // Track state of validated employee
     public ?string $validatedEmployee = null;
     public ?string $validatedPin = null;
@@ -86,6 +91,10 @@ new class extends Component
         $this->validatedEmployee = null;
         $this->validatedPin = null;
         $this->status = '';
+        $this->secureStorageKey = '';
+        $this->secureStorageValue = '';
+        $this->secureStorageResult = '';
+        $this->secureStorageStatusMessage = '';
     }
 
     public function performAction(string $action): void
@@ -129,6 +138,58 @@ new class extends Component
         // Return to PIN input screen
         $this->validatedEmployee = null;
         $this->validatedPin = null;
+    }
+
+    public function secureSave(): void
+    {
+        $this->secureStorageStatusMessage = '';
+        if (empty($this->secureStorageKey)) {
+            $this->secureStorageStatusMessage = 'Error: Key cannot be empty.';
+            return;
+        }
+
+        $success = \App\Plugins\SecureStorage::set($this->secureStorageKey, $this->secureStorageValue);
+        if ($success) {
+            $this->secureStorageStatusMessage = 'Value saved successfully!';
+            $this->secureStorageValue = '';
+        } else {
+            $this->secureStorageStatusMessage = 'Error: Failed to save value.';
+        }
+    }
+
+    public function secureGet(): void
+    {
+        $this->secureStorageStatusMessage = '';
+        if (empty($this->secureStorageKey)) {
+            $this->secureStorageStatusMessage = 'Error: Key cannot be empty.';
+            return;
+        }
+
+        $value = \App\Plugins\SecureStorage::get($this->secureStorageKey);
+        if ($value !== null) {
+            $this->secureStorageResult = $value;
+            $this->secureStorageStatusMessage = 'Value retrieved successfully!';
+        } else {
+            $this->secureStorageResult = '';
+            $this->secureStorageStatusMessage = 'Error: Key not found or error occurred.';
+        }
+    }
+
+    public function secureDelete(): void
+    {
+        $this->secureStorageStatusMessage = '';
+        if (empty($this->secureStorageKey)) {
+            $this->secureStorageStatusMessage = 'Error: Key cannot be empty.';
+            return;
+        }
+
+        $success = \App\Plugins\SecureStorage::delete($this->secureStorageKey);
+        if ($success) {
+            $this->secureStorageResult = '';
+            $this->secureStorageStatusMessage = 'Value deleted successfully!';
+        } else {
+            $this->secureStorageStatusMessage = 'Error: Failed to delete value.';
+        }
     }
 
     private function logEvent(string $name, string $action, string $time, string $date): void
