@@ -48,13 +48,59 @@ enum LocalNotificationsHelper {
 
     static func content(title: String, body: String) -> UNMutableNotificationContent {
         let content = UNMutableNotificationContent()
-        content.title = title
-        content.body = body
+        content.title = title.isEmpty ? "Notification" : title
+        content.body = body.isEmpty ? " " : body
         content.sound = .default
+        // Do NOT set .timeSensitive — without the entitlement iOS can drop delivery.
         if #available(iOS 15.0, *) {
-            content.interruptionLevel = .timeSensitive
+            content.interruptionLevel = .active
         }
         return content
+    }
+
+    /// Best-effort deliver: works in foreground (delegate banners) and background.
+    static func deliver(title: String, body: String, id: String) {
+        LocalNotificationCenterDelegate.install()
+
+        let notificationContent = Self.content(title: title, body: body)
+        // nil trigger = deliver immediately (more reliable than a sub-second interval).
+        let request = UNNotificationRequest(identifier: id, content: notificationContent, trigger: nil)
+        let center = UNUserNotificationCenter.current()
+
+        let addRequest = {
+            DispatchQueue.main.async {
+                LocalNotificationCenterDelegate.install()
+                center.add(request) { error in
+                    if let error {
+                        print("LocalNotifications deliver failed id=\(id): \(error.localizedDescription)")
+                    } else {
+                        print("LocalNotifications deliver ok id=\(id) title=\(title)")
+                    }
+                }
+            }
+        }
+
+        center.getNotificationSettings { settings in
+            print("LocalNotifications settings status=\(settings.authorizationStatus.rawValue) alert=\(settings.alertSetting.rawValue)")
+            switch settings.authorizationStatus {
+            case .authorized, .provisional, .ephemeral:
+                addRequest()
+            case .notDetermined:
+                center.requestAuthorization(options: [.alert, .badge, .sound]) { granted, error in
+                    if let error {
+                        print("LocalNotifications permission error: \(error)")
+                    }
+                    print("LocalNotifications permission granted=\(granted)")
+                    if granted {
+                        addRequest()
+                    }
+                }
+            default:
+                print("LocalNotifications: not authorized — open Settings or NOTIFY → Allow")
+                // Still attempt add (no-op when denied) for consistent logging
+                addRequest()
+            }
+        }
     }
 }
 
@@ -111,59 +157,10 @@ enum LocalNotificationsFunctions {
                 return ["success": false, "error": "title or body is required"]
             }
 
-            let semaphore = DispatchSemaphore(value: 0)
-            var errorMessage: String?
-            var ok = false
+            // Fire-and-forget — never main.async + semaphore (deadlocks Livewire).
+            LocalNotificationsHelper.deliver(title: title, body: body, id: id)
 
-            DispatchQueue.main.async {
-                LocalNotificationCenterDelegate.install()
-                let center = UNUserNotificationCenter.current()
-
-                let deliver: () -> Void = {
-                    let content = LocalNotificationsHelper.content(title: title, body: body)
-                    let request = UNNotificationRequest(identifier: id, content: content, trigger: nil)
-                    center.add(request) { error in
-                        if let error {
-                            errorMessage = error.localizedDescription
-                        } else {
-                            ok = true
-                        }
-                        semaphore.signal()
-                    }
-                }
-
-                center.getNotificationSettings { settings in
-                    switch settings.authorizationStatus {
-                    case .authorized, .provisional, .ephemeral:
-                        deliver()
-                    case .notDetermined:
-                        center.requestAuthorization(options: [.alert, .badge, .sound]) { granted, error in
-                            if let error {
-                                errorMessage = error.localizedDescription
-                                semaphore.signal()
-                            } else if granted {
-                                deliver()
-                            } else {
-                                errorMessage = "Notification permission denied"
-                                semaphore.signal()
-                            }
-                        }
-                    default:
-                        errorMessage = "Notification permission not granted. Enable in Settings → Notifications."
-                        semaphore.signal()
-                    }
-                }
-            }
-
-            _ = semaphore.wait(timeout: .now() + 30)
-
-            if let errorMessage {
-                return ["success": false, "error": errorMessage, "id": id]
-            }
-            if ok {
-                return ["success": true, "id": id]
-            }
-            return ["success": false, "error": "Failed to deliver notification", "id": id]
+            return ["success": true, "id": id, "queued": true]
         }
     }
 

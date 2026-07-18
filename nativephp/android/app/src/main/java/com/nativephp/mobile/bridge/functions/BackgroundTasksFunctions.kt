@@ -227,8 +227,37 @@ class BackgroundTasksFunctions {
     class RunNow(private val context: Context) : BridgeFunction {
         override fun execute(parameters: Map<String, Any>): Map<String, Any> {
             val onlyId = parameters["id"] as? String
-            val results = BackgroundTasksScheduler.runNow(context, onlyId)
-            return mapOf("success" to true, "results" to results)
+            val appContext = context.applicationContext
+
+            // Run off the bridge/UI path so Livewire never blocks on artisan PHP work.
+            // Brief delay lets the Livewire request finish before we spin up ephemeral PHP.
+            Thread({
+                try {
+                    Thread.sleep(600)
+                    Log.i(TAG, "Async RunNow starting onlyId=${onlyId ?: "all"}")
+                    BackgroundTasksScheduler.runNow(appContext, onlyId)
+                    Log.i(TAG, "Async RunNow finished")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Async RunNow failed", e)
+                    try {
+                        BackgroundTasksScheduler.postNotificationBestEffort(
+                            appContext,
+                            "Background task failed",
+                            e.message ?: "RunNow crashed",
+                            "bg_task_error_${System.currentTimeMillis()}"
+                        )
+                    } catch (_: Exception) {
+                        // ignore secondary failure
+                    }
+                }
+            }, "bg-tasks-run-now").start()
+
+            return mapOf(
+                "success" to true,
+                "queued" to true,
+                "results" to emptyList<Map<String, Any>>(),
+                "message" to "Task(s) started in background. Watch for a system notification when finished.",
+            )
         }
     }
 }

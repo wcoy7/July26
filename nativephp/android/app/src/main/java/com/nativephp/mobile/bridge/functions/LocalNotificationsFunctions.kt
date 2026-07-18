@@ -88,11 +88,11 @@ class LocalNotificationsFunctions {
                 .setAutoCancel(true)
                 .setContentIntent(contentIntent)
 
+            val nm = NotificationManagerCompat.from(context)
+            if (!nm.areNotificationsEnabled()) {
+                Log.w(TAG, "Notifications disabled in system settings — post may be dropped")
+            }
             try {
-                val nm = NotificationManagerCompat.from(context)
-                if (!nm.areNotificationsEnabled()) {
-                    throw SecurityException("Notifications disabled for this app in system settings")
-                }
                 nm.notify(notificationIdFromString(id), builder.build())
                 Log.i(TAG, "Notification posted id=$id title=$title")
             } catch (e: SecurityException) {

@@ -198,16 +198,15 @@ test('it can run tasks immediately via runNow', function () {
 
         return json_encode([
             'success' => true,
-            'results' => [
-                ['id' => 'task-1', 'command' => 'inspire', 'output' => 'ok', 'success' => true],
-            ],
+            'queued' => true,
+            'results' => [],
+            'message' => 'Task(s) started in background. Watch for a system notification when finished.',
         ]);
     };
 
     $result = BackgroundTasks::runNow();
     expect($result['success'])->toBeTrue()
-        ->and($result['results'])->toHaveCount(1)
-        ->and($result['results'][0]['command'])->toBe('inspire');
+        ->and($result['queued'] ?? false)->toBeTrue();
 });
 
 test('it can run a single task immediately by id', function () {

@@ -3,10 +3,14 @@
 use App\Plugins\BackgroundTasks;
 use App\Plugins\Geolocation;
 use App\Plugins\LocalNotifications;
+use App\Plugins\Scanner;
 use App\Plugins\Vibration;
 use Flux\Flux;
 use Illuminate\Support\Str;
+use Livewire\Attributes\Renderless;
 use Livewire\Component;
+use Native\Mobile\Attributes\OnNative;
+use Native\Mobile\Events\Scanner\CodeScanned;
 use Native\Mobile\Facades\Dialog;
 
 new class extends Component
@@ -63,6 +67,27 @@ new class extends Component
 
     public bool $notifyHasPermission = false;
 
+    // Barcode / QR scanner test modal
+    public string $scannerPrompt = 'Scan barcode or QR code';
+
+    public bool $scannerContinuous = false;
+
+    /** @var list<string> */
+    public array $scannerFormats = ['qr', 'ean13', 'code128'];
+
+    public string $scannerSessionId = 'time-clock-scan';
+
+    public string $scannerStatusMessage = '';
+
+    public string $scannerLastData = '';
+
+    public string $scannerLastFormat = '';
+
+    public string $scannerLastId = '';
+
+    /** @var list<array{data: string, format: string, id: ?string, at: string}> */
+    public array $scannerHistory = [];
+
     // Track state of validated employee
     public ?string $validatedEmployee = null;
     public ?string $validatedPin = null;
@@ -114,7 +139,9 @@ new class extends Component
 
     /**
      * Strong 100ms haptic feedback for keypad presses.
+     * Renderless so each key does not re-render the whole clock UI.
      */
+    #[Renderless]
     public function vibrateKeypad(): void
     {
         Vibration::vibrate(duration: 100, intensity: 0.75);
@@ -282,9 +309,24 @@ new class extends Component
     {
         $this->bgTaskStatusMessage = '';
         $this->bgTasks = BackgroundTasks::list();
+        $permissionNote = LocalNotifications::hasPermission()
+            ? ''
+            : ' Notifications not allowed yet — completion alerts need NOTIFY → Allow.';
         $this->bgTaskStatusMessage = count($this->bgTasks) === 0
-            ? 'No background tasks registered.'
-            : count($this->bgTasks).' task(s) loaded.';
+            ? 'No background tasks registered.'.$permissionNote
+            : count($this->bgTasks).' task(s) loaded.'.$permissionNote;
+    }
+
+    /**
+     * Request local-notification permission so task completion banners can appear.
+     */
+    private function ensureNotificationsForBackgroundTasks(): void
+    {
+        if (LocalNotifications::hasPermission()) {
+            return;
+        }
+
+        LocalNotifications::requestPermission();
     }
 
     public function bgCreate(): void
@@ -416,13 +458,54 @@ new class extends Component
         $this->bgTaskOutput = '';
 
         $id = trim($this->bgTaskId) !== '' ? trim($this->bgTaskId) : null;
-        $result = BackgroundTasks::runNow($id);
+
+        // Completion alerts are local notifications from the native task runner.
+        // Ensure permission before queueing so the finished banner is not dropped.
+        $this->ensureNotificationsForBackgroundTasks();
+
+        try {
+            $result = BackgroundTasks::runNow($id);
+        } catch (\Throwable $e) {
+            $message = 'Error: RunNow threw — '.$e->getMessage();
+            $this->bgTaskStatusMessage = $message;
+            $this->bgTaskBanner = $message;
+            Flux::toast(variant: 'danger', text: $message);
+
+            return;
+        }
 
         if (! ($result['success'] ?? false)) {
             $message = 'Error: '.($result['error'] ?? 'RunNow failed or bridge unavailable.');
             $this->bgTaskStatusMessage = $message;
             $this->bgTaskOutput = json_encode($result, JSON_PRETTY_PRINT) ?: '';
-            $this->notifyBackgroundTask($message, success: false);
+            $this->bgTaskBanner = $message;
+            Flux::toast(variant: 'danger', text: $message);
+
+            return;
+        }
+
+        // Native now queues work async to avoid PHP-thread deadlock; results come via notification.
+        if ($result['queued'] ?? false) {
+            $permissionHint = LocalNotifications::hasPermission()
+                ? 'Notification permission is granted.'
+                : 'Notification permission missing — open NOTIFY → Allow, then Run Now again.';
+
+            // Extra PHP-side local notification so iOS always gets at least one
+            // system banner for Run Now (native also posts started + finished).
+            LocalNotifications::show(
+                'Background task started',
+                'Running '.($id ?? 'enabled tasks').'. You should get a finished alert shortly.',
+                'bg_task_php_started_'.time()
+            );
+
+            $message = (string) ($result['message'] ?? 'Task(s) started in background. Watch for a system notification when finished.');
+            $this->bgTaskStatusMessage = $message;
+            $this->bgTaskBanner = $message;
+            $this->bgTaskOutput = "Queued at ".now()->toDateTimeString()."\n"
+                ."Task id: ".($id ?? 'all enabled')."\n"
+                ."Expect: system banner + on-screen alert when finished (~1–3s).\n"
+                .$permissionHint;
+            Flux::toast(variant: 'success', text: 'Task started — watch for a notification/alert.');
 
             return;
         }
@@ -461,24 +544,14 @@ new class extends Component
             $banner .= ' · '.Str::limit(preg_replace('/\s+/', ' ', $firstSnippet) ?? $firstSnippet, 120);
         }
 
-        $this->notifyBackgroundTask($banner, success: true, detail: $this->bgTaskOutput);
+        $this->bgTaskBanner = $banner;
+        Flux::toast(variant: 'success', text: $banner, duration: 5000);
 
-        // System tray notification (also fired natively after each task run)
-        if (! LocalNotifications::hasPermission()) {
-            LocalNotifications::requestPermission();
-        }
-
-        $notif = LocalNotifications::show(
+        LocalNotifications::show(
             'Background task finished',
             Str::limit($banner, 160),
             'bg_task_'.($id ?? 'all').'_'.time()
         );
-
-        if ($notif['success'] ?? false) {
-            $this->bgTaskStatusMessage .= ' · Notification sent (check banner / Notification Center).';
-        } else {
-            $this->bgTaskStatusMessage .= ' · Notification failed: '.($notif['error'] ?? 'unknown — open NOTIFY → Allow first.');
-        }
     }
 
     public function dismissBgTaskBanner(): void
@@ -563,6 +636,60 @@ new class extends Component
         $ok = LocalNotifications::cancelAll();
         $this->notifyStatusMessage = $ok ? 'All local notifications cancelled.' : 'Error: Cancel all failed.';
         $this->notifyLastId = '';
+    }
+
+    /**
+     * Open the native barcode/QR scanner (iOS AVFoundation / Android ML Kit).
+     */
+    public function scannerOpen(): void
+    {
+        $formats = $this->scannerFormats !== []
+            ? $this->scannerFormats
+            : ['qr'];
+
+        $this->scannerStatusMessage = 'Scanner opened — point the camera at a code.'
+            .($this->scannerContinuous ? ' Continuous mode: keep scanning until you close.' : ' Closes after first scan.');
+
+        Scanner::scan()
+            ->prompt(trim($this->scannerPrompt) !== '' ? trim($this->scannerPrompt) : 'Scan barcode')
+            ->continuous($this->scannerContinuous)
+            ->formats($formats)
+            ->id(trim($this->scannerSessionId) !== '' ? trim($this->scannerSessionId) : 'time-clock-scan');
+    }
+
+    public function scannerClearHistory(): void
+    {
+        $this->scannerHistory = [];
+        $this->scannerLastData = '';
+        $this->scannerLastFormat = '';
+        $this->scannerLastId = '';
+        $this->scannerStatusMessage = 'Scan history cleared.';
+    }
+
+    /**
+     * Native CodeScanned event from App\Plugins\Scanner (matches official mobile-scanner API).
+     */
+    #[OnNative(CodeScanned::class)]
+    public function handleCodeScanned(string $data, string $format, ?string $id = null): void
+    {
+        $this->scannerLastData = $data;
+        $this->scannerLastFormat = $format;
+        $this->scannerLastId = $id ?? '';
+        $this->scannerStatusMessage = "Scanned ({$format}): {$data}";
+
+        array_unshift($this->scannerHistory, [
+            'data' => $data,
+            'format' => $format,
+            'id' => $id,
+            'at' => now()->format('h:i:s A'),
+        ]);
+
+        if (count($this->scannerHistory) > 10) {
+            array_pop($this->scannerHistory);
+        }
+
+        Flux::toast(variant: 'success', text: "Scanned: {$data}");
+        Vibration::vibrate(duration: 40, intensity: 0.6);
     }
 
     /**

@@ -6,6 +6,7 @@ import com.nativephp.mobile.bridge.functions.BackgroundTasksFunctions
 import com.nativephp.mobile.bridge.functions.EdgeFunctions
 import com.nativephp.mobile.bridge.functions.GeolocationFunctions
 import com.nativephp.mobile.bridge.functions.LocalNotificationsFunctions
+import com.nativephp.mobile.bridge.functions.ScannerFunctions
 import com.nativephp.mobile.bridge.functions.SecureStorageFunctions
 import com.nativephp.mobile.bridge.functions.VibrationFunctions
 import com.nativephp.mobile.bridge.plugins.registerPluginBridgeFunctions
@@ -39,6 +40,7 @@ fun registerBridgeFunctions(activity: FragmentActivity, context: Context) {
     registry.register("LocalNotifications.Schedule", LocalNotificationsFunctions.Schedule(context))
     registry.register("LocalNotifications.Cancel", LocalNotificationsFunctions.Cancel(context))
     registry.register("LocalNotifications.CancelAll", LocalNotificationsFunctions.CancelAll(context))
+    registry.register("Scanner.Scan", ScannerFunctions.Scan(activity))
 
     // Re-sync WorkManager schedules after PHP/app is ready
     try {

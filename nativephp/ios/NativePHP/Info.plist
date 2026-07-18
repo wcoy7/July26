@@ -22,6 +22,8 @@
     <false/>
     <key>NSLocationWhenInUseUsageDescription</key>
     <string>This app requires access to your location to clock in and clock out of shifts.</string>
+    <key>NSCameraUsageDescription</key>
+    <string>Camera access is required to scan barcodes and QR codes.</string>
     <key>UIBackgroundModes</key>
     <array>
       <string>fetch</string>

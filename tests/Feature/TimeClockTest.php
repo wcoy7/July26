@@ -122,6 +122,52 @@ test('it renders the local notifications modal button and markup', function () {
         ->assertSeeHtml('NOTIFY');
 });
 
+test('it renders the scanner modal button and markup', function () {
+    Livewire::test('time-clock')
+        ->assertSeeHtml('scanner-modal')
+        ->assertSeeHtml('SCAN');
+});
+
+test('it can open the barcode scanner from the time clock modal', function () {
+    global $mockNativePhpCalls;
+    $mockNativePhpCalls = [];
+
+    $mockNativePhpCalls['Scanner.Scan'] = function (string $payload) {
+        $data = json_decode($payload, true);
+        expect($data['prompt'])->toBe('Scan inventory tag');
+        expect($data['continuous'])->toBeTrue();
+        expect($data['formats'])->toBe(['qr', 'ean13', 'code128']);
+        expect($data['id'])->toBe('inventory-scan');
+
+        return json_encode(['success' => true, 'opened' => true]);
+    };
+
+    Livewire::test('time-clock')
+        ->set('scannerPrompt', 'Scan inventory tag')
+        ->set('scannerContinuous', true)
+        ->set('scannerSessionId', 'inventory-scan')
+        ->call('scannerOpen')
+        ->assertSee('Scanner opened');
+});
+
+test('it records a CodeScanned result on the time clock', function () {
+    global $mockNativePhpCalls;
+    $mockNativePhpCalls = [];
+    $mockNativePhpCalls['Vibration.HasHaptics'] = fn () => json_encode(['success' => true, 'supported' => true]);
+    $mockNativePhpCalls['Vibration.Vibrate'] = fn () => json_encode(['success' => true]);
+
+    Livewire::test('time-clock')
+        ->call('handleCodeScanned', 'ABC-12345', 'qr', 'time-clock-scan')
+        ->assertSet('scannerLastData', 'ABC-12345')
+        ->assertSet('scannerLastFormat', 'qr')
+        ->assertSet('scannerLastId', 'time-clock-scan')
+        ->assertCount('scannerHistory', 1)
+        ->assertSee('Scanned (qr): ABC-12345')
+        ->call('scannerClearHistory')
+        ->assertSet('scannerLastData', '')
+        ->assertCount('scannerHistory', 0);
+});
+
 test('it can show a local notification from the time clock modal', function () {
     global $mockNativePhpCalls;
     $mockNativePhpCalls = [];
@@ -197,18 +243,28 @@ test('it can create list update run and delete a background task via the modal a
     $mockNativePhpCalls['BackgroundTasks.Sync'] = fn () => json_encode(['success' => true, 'count' => 1]);
 
     $mockNativePhpCalls['BackgroundTasks.RunNow'] = function (string $payload) {
-        $data = json_decode($payload, true);
-
         return json_encode([
             'success' => true,
-            'results' => [[
-                'id' => $data['id'] ?? 'task-livewire-1',
-                'command' => 'inspire',
-                'output' => 'Simplicity is the ultimate sophistication.',
-                'success' => true,
-            ]],
+            'queued' => true,
+            'results' => [],
+            'message' => 'Task(s) started in background. Watch for a system notification when finished.',
         ]);
     };
+
+    // Run Now ensures notification permission so completion banners can show.
+    $mockNativePhpCalls['LocalNotifications.HasPermission'] = fn () => json_encode([
+        'success' => true,
+        'granted' => true,
+    ]);
+    $mockNativePhpCalls['LocalNotifications.RequestPermission'] = fn () => json_encode([
+        'success' => true,
+        'granted' => true,
+    ]);
+    $mockNativePhpCalls['LocalNotifications.Show'] = fn () => json_encode([
+        'success' => true,
+        'id' => 'bg-started',
+        'queued' => true,
+    ]);
 
     Livewire::test('time-clock')
         ->set('bgTaskName', 'test-inspire')
@@ -225,9 +281,8 @@ test('it can create list update run and delete a background task via the modal a
         ->call('bgSync')
         ->assertSee('synced')
         ->call('bgRunNow')
-        ->assertSee('RunNow completed')
-        ->assertSet('bgTaskOutput', fn ($out) => str_contains($out, 'Simplicity is the ultimate sophistication.'))
-        ->assertSet('bgTaskBanner', fn ($banner) => str_contains($banner, 'RunNow completed'))
+        ->assertSee('started in background')
+        ->assertSet('bgTaskBanner', fn ($banner) => str_contains($banner, 'background'))
         ->call('dismissBgTaskBanner')
         ->assertSet('bgTaskBanner', '')
         ->call('bgDelete')

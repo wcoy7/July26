@@ -1,6 +1,7 @@
 import Foundation
 import BackgroundTasks
 import UserNotifications
+import UIKit
 
 // MARK: - Storage
 
@@ -273,83 +274,66 @@ enum BackgroundTasksScheduler {
 
     static func runArtisan(command: String) -> String {
         ensurePhpReady()
-        if PersistentPHPRuntime.shared.isBooted {
-            let out = PersistentPHPRuntime.shared.artisan(command: command)
-            print("BackgroundTasksScheduler: artisan '\(command)' => \(out.prefix(200))")
-            return out
-        }
-        print("BackgroundTasksScheduler: PHP runtime not booted, cannot run '\(command)'")
-        return "error: PHP runtime not booted"
+        // Prefer ephemeral PHP so we never re-enter the Livewire/persistent PHP pthread
+        // (that hang is why completion notifications never appeared).
+        let out = EphemeralPHPRuntime.artisan(command: command)
+        print("BackgroundTasksScheduler: artisan '\(command)' => \(out.prefix(200))")
+        return out
     }
 
     /// Posts a local notification so you can verify OS background runs without opening the app.
+    /// Fire-and-forget: never block the bridge thread (main.async + semaphore deadlocks Livewire).
     static func notifyTaskCompleted(id: String, command: String, output: String, success: Bool) {
-        // Must run notification center work on main; request permission if needed.
-        let semaphore = DispatchSemaphore(value: 0)
+        let title = success ? "Background task finished" : "Background task failed"
+        let snippet = output
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        let body = snippet.isEmpty
+            ? "Command: \(command)"
+            : "\(command) — \(String(snippet.prefix(160)))"
+        let requestId = "bg_task_\(id)_\(Int(Date().timeIntervalSince1970 * 1000))"
 
-        DispatchQueue.main.async {
-            LocalNotificationCenterDelegate.install()
-            let center = UNUserNotificationCenter.current()
+        // showAlert: true so foreground Run Now is always visible even if banners are suppressed
+        postLocalNotification(title: title, body: body, id: requestId, showAlert: true)
+    }
 
-            center.getNotificationSettings { settings in
-                let authorized: Bool = {
-                    switch settings.authorizationStatus {
-                    case .authorized, .provisional, .ephemeral:
-                        return true
-                    default:
-                        return false
-                    }
-                }()
+    /// Shared local-notification poster used by task completion (and empty RunNow results).
+    static func postLocalNotification(title: String, body: String, id: String, showAlert: Bool = false) {
+        print("BackgroundTasksScheduler: postLocalNotification title=\(title) body=\(body.prefix(80)) alert=\(showAlert)")
+        LocalNotificationsHelper.deliver(title: title, body: body, id: id)
 
-                let post: () -> Void = {
-                    let content = UNMutableNotificationContent()
-                    content.title = success ? "Background task finished" : "Background task failed"
-                    let snippet = output
-                        .trimmingCharacters(in: .whitespacesAndNewlines)
-                        .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
-                    content.body = snippet.isEmpty
-                        ? "Command: \(command)"
-                        : "\(command) — \(String(snippet.prefix(160)))"
-                    content.sound = .default
-                    if #available(iOS 15.0, *) {
-                        content.interruptionLevel = .timeSensitive
-                    }
-
-                    let request = UNNotificationRequest(
-                        identifier: "bg_task_\(id)_\(Int(Date().timeIntervalSince1970))",
-                        content: content,
-                        trigger: nil // immediate
-                    )
-
-                    center.add(request) { error in
-                        if let error {
-                            print("BackgroundTasksScheduler: notification failed: \(error)")
-                        } else {
-                            print("BackgroundTasksScheduler: notification posted for \(command)")
-                        }
-                        semaphore.signal()
-                    }
-                }
-
-                if authorized {
-                    post()
-                } else {
-                    center.requestAuthorization(options: [.alert, .badge, .sound]) { granted, error in
-                        if let error {
-                            print("BackgroundTasksScheduler: auth error: \(error)")
-                        }
-                        print("BackgroundTasksScheduler: auth granted=\(granted)")
-                        if granted {
-                            post()
-                        } else {
-                            semaphore.signal()
-                        }
-                    }
-                }
-            }
+        // Foreground fallback: system banners are easy to miss / blocked by Focus.
+        if showAlert {
+            presentCompletionAlert(title: title, body: body)
         }
+    }
 
-        _ = semaphore.wait(timeout: .now() + 15)
+    private static func presentCompletionAlert(title: String, body: String) {
+        DispatchQueue.main.async {
+            guard let top = topViewController() else {
+                print("BackgroundTasksScheduler: no VC for alert fallback")
+                return
+            }
+            let alert = UIAlertController(title: title, message: body, preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "OK", style: .default))
+            // Avoid stacking if something else is presenting
+            if top.presentedViewController != nil {
+                print("BackgroundTasksScheduler: alert skipped (already presenting)")
+                return
+            }
+            top.present(alert, animated: true)
+        }
+    }
+
+    private static func topViewController() -> UIViewController? {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let window = scenes.flatMap(\.windows).first(where: \.isKeyWindow)
+            ?? scenes.flatMap(\.windows).first
+        var top = window?.rootViewController
+        while let presented = top?.presentedViewController {
+            top = presented
+        }
+        return top
     }
 
     private static func ensurePhpReady() {
@@ -490,8 +474,48 @@ enum BackgroundTasksFunctions {
     class RunNow: NSObject, BridgeFunction {
         func execute(parameters: [String: Any]) throws -> [String: Any] {
             let onlyId = parameters["id"] as? String
-            let results = BackgroundTasksScheduler.executeDueTasks(forceAll: true, onlyId: onlyId)
-            return ["success": true, "results": results]
+
+            // Immediate system notification (no alert) so the delivery path is exercised
+            // before artisan work begins.
+            BackgroundTasksScheduler.postLocalNotification(
+                title: "Background task started",
+                body: onlyId != nil
+                    ? "Running task \(onlyId!)…"
+                    : "Running enabled task(s)…",
+                id: "bg_task_started_\(Int(Date().timeIntervalSince1970 * 1000))",
+                showAlert: false
+            )
+
+            // CRITICAL: never call artisan synchronously from a nativephp_call that is
+            // itself on the PHP worker thread (Livewire) — that deadlocks the spinner.
+            // Ephemeral PHP + delay keeps Run Now off the UI PHP pthread.
+            DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 0.75) {
+                print("BackgroundTasks.RunNow: starting force run onlyId=\(onlyId ?? "all")")
+                let results = BackgroundTasksScheduler.executeDueTasks(forceAll: true, onlyId: onlyId)
+                print("BackgroundTasks.RunNow: finished \(results.count) task(s)")
+
+                if results.isEmpty {
+                    let detail: String
+                    if let onlyId {
+                        detail = "No enabled task matched id \(onlyId)."
+                    } else {
+                        detail = "No enabled tasks are registered. Create one in TASKS first."
+                    }
+                    BackgroundTasksScheduler.postLocalNotification(
+                        title: "Background task",
+                        body: detail,
+                        id: "bg_task_empty_\(Int(Date().timeIntervalSince1970 * 1000))",
+                        showAlert: true
+                    )
+                }
+            }
+
+            return [
+                "success": true,
+                "queued": true,
+                "results": [] as [[String: Any]],
+                "message": "Task(s) started in background. Watch for a system notification when finished.",
+            ]
         }
     }
 }

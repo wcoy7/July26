@@ -97,6 +97,8 @@ object BackgroundTasksScheduler {
             .filter { it.optBoolean("enabled", true) }
             .filter { onlyId == null || it.optString("id") == onlyId }
 
+        Log.i(TAG, "runNow onlyId=${onlyId ?: "all"} candidates=${tasks.size}")
+
         for (task in tasks) {
             val id = task.optString("id")
             val command = task.optString("command").ifBlank { task.optString("name") }
@@ -131,6 +133,21 @@ object BackgroundTasksScheduler {
             }
         }
 
+        // Always surface something in the notification shade so empty registry is obvious.
+        if (results.isEmpty()) {
+            val detail = if (onlyId != null) {
+                "No enabled task matched id $onlyId."
+            } else {
+                "No enabled tasks are registered. Create one in TASKS first."
+            }
+            postNotificationBestEffort(
+                context,
+                "Background task",
+                detail,
+                "bg_task_empty_${System.currentTimeMillis()}"
+            )
+        }
+
         return results
     }
 
@@ -152,30 +169,70 @@ object BackgroundTasksScheduler {
         output: String,
         success: Boolean,
     ) {
+        val title = if (success) "Background task finished" else "Background task failed"
+        val snippet = output.trim().replace(Regex("\\s+"), " ")
+        val body = if (snippet.isEmpty()) {
+            "Command: $command"
+        } else {
+            "$command — ${snippet.take(160)}"
+        }
+
+        postNotificationBestEffort(
+            context,
+            title,
+            body,
+            "bg_task_${taskId}_${System.currentTimeMillis()}"
+        )
+    }
+
+    /**
+     * Best-effort notification that does not throw back into WorkManager / RunNow.
+     * Uses the shared LocalNotifications channel and falls back to NotificationManager.
+     */
+    fun postNotificationBestEffort(
+        context: Context,
+        title: String,
+        body: String,
+        id: String,
+    ) {
+        val appContext = context.applicationContext
         try {
-            LocalNotificationsFunctions.ensureChannel(context)
+            LocalNotificationsFunctions.ensureChannel(appContext)
 
-            if (!LocalNotificationsFunctions.hasPermission(context)) {
-                Log.w(TAG, "Task notification: permission not granted — attempting post anyway may fail")
+            if (!LocalNotificationsFunctions.hasPermission(appContext)) {
+                Log.w(
+                    TAG,
+                    "Task notification: permission not granted. Open NOTIFY → Allow, then try again."
+                )
             }
 
-            val title = if (success) "Background task finished" else "Background task failed"
-            val snippet = output.trim().replace(Regex("\\s+"), " ")
-            val body = if (snippet.isEmpty()) {
-                "Command: $command"
-            } else {
-                "$command — ${snippet.take(160)}"
-            }
-
-            LocalNotificationsFunctions.showNotification(
-                context,
-                title,
-                body,
-                "bg_task_${taskId}_${System.currentTimeMillis()}"
-            )
-            Log.i(TAG, "Posted completion notification for $command")
+            LocalNotificationsFunctions.showNotification(appContext, title, body, id)
+            Log.i(TAG, "Posted notification id=$id title=$title")
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to post task notification: ${e.message}", e)
+            Log.e(TAG, "showNotification failed, trying NotificationManager fallback: ${e.message}", e)
+            try {
+                // Fallback path if NotificationManagerCompat throws (permission edge cases)
+                val manager = appContext.getSystemService(Context.NOTIFICATION_SERVICE)
+                    as android.app.NotificationManager
+                LocalNotificationsFunctions.ensureChannel(appContext)
+                val builder = androidx.core.app.NotificationCompat.Builder(
+                    appContext,
+                    LocalNotificationsFunctions.CHANNEL_ID
+                )
+                    .setSmallIcon(android.R.drawable.ic_dialog_info)
+                    .setContentTitle(title.ifBlank { "Notification" })
+                    .setContentText(body.ifBlank { " " })
+                    .setStyle(
+                        androidx.core.app.NotificationCompat.BigTextStyle().bigText(body.ifBlank { title })
+                    )
+                    .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
+                    .setDefaults(androidx.core.app.NotificationCompat.DEFAULT_ALL)
+                    .setAutoCancel(true)
+                manager.notify(LocalNotificationsFunctions.notificationIdFromString(id), builder.build())
+                Log.i(TAG, "Fallback NotificationManager notify succeeded id=$id")
+            } catch (e2: Exception) {
+                Log.e(TAG, "Failed to post task notification: ${e2.message}", e2)
+            }
         }
     }
 

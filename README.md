@@ -15,6 +15,7 @@ Built with Laravel, Livewire, Flux UI, and custom native plugins for iOS and And
 - **GPS Location Tracking** — Leaflet map when a live fix is available; cached coordinates used for punches when GPS is unreachable
 - **Secure Storage (Keychain)** — KEYCHAIN modal for set/get/delete via iOS Keychain / Android EncryptedSharedPreferences
 - **Haptic Feedback** — Vibration plugin + optional Haptic Lab tester component
+- **Barcode / QR Scanner** — SCAN modal opens a native camera scanner (AVFoundation / ML Kit)
 
 ### ⭐ Background Tasks (custom native plugin)
 A first-class **background job runner** inspired by [nativephp/mobile-background-tasks](https://nativephp.com/plugins/nativephp/mobile-background-tasks):
@@ -208,12 +209,64 @@ LocalNotifications::schedule('Break over', 'Please return to work.', 60);
 - **Android**: `NotificationCompat` + channel + `AlarmManager` for scheduled
 - Time-clock toolbar: **NOTIFY** modal for manual testing
 
+### `App\Plugins\Scanner` 📷
+
+Barcode and QR scanning inspired by [nativephp/mobile-scanner](https://nativephp.com/plugins/nativephp/mobile-scanner), implemented as a **custom in-app plugin** (no paid package required).
+
+#### Architecture
+
+```text
+PHP  Scanner::scan()->prompt()->formats()->id()
+        │
+        ▼
+  Bridge  Scanner.Scan
+        │
+        ├─ iOS: AVFoundation full-screen UI → LaravelBridge CodeScanned
+        └─ Android: CameraX + ML Kit ScannerActivity → CodeScanned via MainActivity WebView
+```
+
+#### API
+
+| Method | Bridge | Notes |
+|--------|--------|-------|
+| `Scanner::scan()` | — | Returns fluent `PendingBarcodeScan` |
+| `->prompt(string)` | — | Overlay text on scanner UI |
+| `->continuous(bool)` | — | Keep open for multi-scan (default `false`) |
+| `->formats(array)` | — | `qr`, `ean13`, `ean8`, `code128`, `code39`, `upca`, `upce`, `all` |
+| `->id(string)` | — | Session id for multi-context handling |
+| `->scan()` / `__destruct()` | `Scanner.Scan` | Opens native camera UI |
+
+Results are **async** via `Native\Mobile\Events\Scanner\CodeScanned` (`data`, `format`, `id`).
+
+```php
+use App\Plugins\Scanner;
+use Native\Mobile\Attributes\OnNative;
+use Native\Mobile\Events\Scanner\CodeScanned;
+
+// Open scanner (auto-starts on destruct, or call ->scan())
+Scanner::scan()
+    ->prompt('Scan product barcode')
+    ->continuous(false)
+    ->formats(['qr', 'ean13', 'code128'])
+    ->id('checkout');
+
+#[OnNative(CodeScanned::class)]
+public function handleScan(string $data, string $format, ?string $id = null): void
+{
+    // $data = decoded value, $format = qr|ean13|…
+}
+```
+
+- **iOS**: AVFoundation metadata scanning · `NSCameraUsageDescription` in Info.plist  
+- **Android**: CameraX + ML Kit barcode-scanning · `CAMERA` permission · `ScannerActivity`  
+- Time-clock toolbar: **SCAN** modal for manual testing
+
 ---
 
 ## 🖥 Livewire UI
 
 ### `⚡time-clock` (default home `/`)
-PIN keypad (haptic keys), digital clock, shift actions, optional GPS map, **KEYCHAIN** and **HAPTIC** modals.
+PIN keypad (haptic keys), digital clock, shift actions, optional GPS map, **KEYCHAIN**, **HAPTIC**, **NOTIFY**, **TASKS**, and **SCAN** modals.
 
 ### `⚡vibration-tester` (Haptic Lab)
 Optional component for intensity/duration/preset experiments (`<livewire:vibration-tester />`).
@@ -228,13 +281,16 @@ Optional component for intensity/duration/preset experiments (`<livewire:vibrati
 | `tests/Feature/SecureStorageTest.php` | set/get/delete bridge mocks |
 | `tests/Feature/VibrationTest.php` | vibrate / patterns / presets |
 | `tests/Feature/VibrationTesterTest.php` | Haptic Lab UI actions |
-| `tests/Feature/TimeClockTest.php` | home route, PIN/shifts, haptics, GPS cache behavior |
+| `tests/Feature/LocalNotificationsTest.php` | permission / show / schedule / cancel |
+| `tests/Feature/ScannerTest.php` | fluent API, defaults, once-only, auto-start |
+| `tests/Feature/TimeClockTest.php` | home route, PIN/shifts, haptics, SCAN modal |
 
 ```bash
 php artisan test --compact \
   tests/Feature/BackgroundTasksTest.php \
   tests/Feature/SecureStorageTest.php \
   tests/Feature/VibrationTest.php \
+  tests/Feature/ScannerTest.php \
   tests/Feature/TimeClockTest.php
 ```
 

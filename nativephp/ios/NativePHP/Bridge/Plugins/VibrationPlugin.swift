@@ -1,5 +1,6 @@
 import Foundation
 import CoreHaptics
+import UIKit
 
 /// Shared Core Haptics engine for single vibrations and patterns.
 enum VibrationEngine {
@@ -75,10 +76,6 @@ enum VibrationFunctions {
 
     class Vibrate: NSObject, BridgeFunction {
         func execute(parameters: [String: Any]) throws -> [String: Any] {
-            guard VibrationEngine.supportsHaptics() else {
-                return ["success": false, "error": "Device does not support haptics"]
-            }
-
             let durationMs = VibrationEngine.intValue(parameters["duration"]) ?? 100
             let intensity = VibrationEngine.floatValue(parameters["intensity"]) ?? 0.5
             let sharpness = VibrationEngine.floatValue(parameters["sharpness"]) ?? 0.5
@@ -86,30 +83,50 @@ enum VibrationFunctions {
             let clampedDuration = max(1, min(5000, durationMs))
             let clampedIntensity = max(0.0, min(1.0, intensity))
             let clampedSharpness = max(0.0, min(1.0, sharpness))
-            let durationSeconds = Double(clampedDuration) / 1000.0
 
-            let intensityParam = CHHapticEventParameter(parameterID: .hapticIntensity, value: Float(clampedIntensity))
-            let sharpnessParam = CHHapticEventParameter(parameterID: .hapticSharpness, value: Float(clampedSharpness))
+            // Always return immediately — haptics run async on main (required by UIKit/Core Haptics).
+            // Fire-and-forget so Livewire keypad presses never block.
+            DispatchQueue.main.async {
+                // UIKit impact is the most reliable short tap (keypad). Works even when
+                // CHHapticEngine.supportsHaptics is false on some devices/simulators.
+                let style: UIImpactFeedbackGenerator.FeedbackStyle =
+                    clampedIntensity >= 0.75 ? .heavy : (clampedIntensity >= 0.4 ? .medium : .light)
+                let generator = UIImpactFeedbackGenerator(style: style)
+                generator.prepare()
+                if #available(iOS 13.0, *) {
+                    generator.impactOccurred(intensity: CGFloat(clampedIntensity))
+                } else {
+                    generator.impactOccurred()
+                }
 
-            let event = CHHapticEvent(
-                eventType: .hapticContinuous,
-                parameters: [intensityParam, sharpnessParam],
-                relativeTime: 0,
-                duration: max(0.01, durationSeconds)
-            )
-
-            do {
-                try VibrationEngine.play(events: [event])
-                return ["success": true]
-            } catch {
-                return ["success": false, "error": error.localizedDescription]
+                // Longer buzzes: also try Core Haptics continuous when available
+                if clampedDuration > 40, VibrationEngine.supportsHaptics() {
+                    let intensityParam = CHHapticEventParameter(parameterID: .hapticIntensity, value: Float(clampedIntensity))
+                    let sharpnessParam = CHHapticEventParameter(parameterID: .hapticSharpness, value: Float(clampedSharpness))
+                    let event = CHHapticEvent(
+                        eventType: .hapticContinuous,
+                        parameters: [intensityParam, sharpnessParam],
+                        relativeTime: 0,
+                        duration: Double(clampedDuration) / 1000.0
+                    )
+                    try? VibrationEngine.play(events: [event])
+                }
             }
+
+            return ["success": true]
         }
     }
 
     class HasHaptics: NSObject, BridgeFunction {
         func execute(parameters: [String: Any]) throws -> [String: Any] {
-            let supported = VibrationEngine.supportsHaptics()
+            // UIKit impact feedback is available on physical iPhones even when Core Haptics reports false.
+            // Treat device as haptic-capable unless we are clearly on an unsupported platform.
+            let core = VibrationEngine.supportsHaptics()
+            #if targetEnvironment(simulator)
+            let supported = core
+            #else
+            let supported = true
+            #endif
             return ["success": true, "supported": supported]
         }
     }

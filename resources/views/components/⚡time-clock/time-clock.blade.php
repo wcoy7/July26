@@ -265,6 +265,12 @@
                         KEYCHAIN
                     </button>
                 </flux:modal.trigger>
+                <flux:modal.trigger name="scanner-modal">
+                    <button type="button" class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 flex items-center gap-1 text-[10px] font-bold transition-all">
+                        <flux:icon name="qr-code" class="w-3.5 h-3.5" />
+                        SCAN
+                    </button>
+                </flux:modal.trigger>
                 <button type="button" wire:click="refreshLocation" class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 flex items-center gap-1 text-[10px] font-bold transition-all">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
@@ -365,7 +371,8 @@
             <flux:heading size="lg">Background Tasks</flux:heading>
             <flux:text size="sm" class="text-zinc-500">
                 CRUD test for on-device scheduled artisan jobs (WorkManager / BGTaskScheduler).
-                When a task finishes (including in the background), a <strong>system notification</strong> is posted so you can verify it ran — allow notifications under <strong>NOTIFY</strong> first.
+                When a task finishes (including <strong>Run Now</strong>), a <strong>system notification</strong> is posted.
+                Grant permission once via <strong>NOTIFY → Allow</strong> (or accept the prompt on first Run Now), then wait ~1s after Run Now for the banner.
             </flux:text>
         </div>
 
@@ -403,7 +410,10 @@
             <flux:button wire:click="bgDelete" variant="danger" class="w-full">Delete</flux:button>
             <flux:button wire:click="bgRefreshList" variant="ghost" class="w-full">List</flux:button>
             <flux:button wire:click="bgSync" variant="filled" class="w-full">Sync OS</flux:button>
-            <flux:button wire:click="bgRunNow" variant="primary" class="w-full" icon="play">Run Now</flux:button>
+            <flux:button wire:click="bgRunNow" variant="primary" class="w-full" icon="play" wire:loading.attr="disabled" wire:target="bgRunNow">
+                <span wire:loading.remove wire:target="bgRunNow">Run Now</span>
+                <span wire:loading wire:target="bgRunNow">Running…</span>
+            </flux:button>
         </div>
 
         @if (count($bgTasks) > 0)
@@ -548,6 +558,76 @@
             <flux:button wire:click="secureDelete" variant="danger">Delete</flux:button>
             <flux:button wire:click="secureSave" variant="primary">Save</flux:button>
         </div>
+    </flux:modal>
+
+    <flux:modal name="scanner-modal" class="md:w-96 space-y-4">
+        <div class="space-y-1">
+            <flux:heading size="lg">Barcode Scanner</flux:heading>
+            <flux:text size="sm" class="text-zinc-500">
+                Native camera scanner (iOS AVFoundation / Android ML Kit).
+                Results arrive via <code class="text-[11px]">CodeScanned</code>.
+                On Android, accept camera permission once, then tap Scan again if needed.
+            </flux:text>
+        </div>
+
+        @if ($scannerStatusMessage)
+            <div class="p-2.5 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/40 text-blue-800 dark:text-blue-400 rounded-xl text-xs font-semibold break-words">
+                {{ $scannerStatusMessage }}
+            </div>
+        @endif
+
+        <div class="space-y-3">
+            <flux:field>
+                <flux:label>Prompt</flux:label>
+                <flux:input wire:model="scannerPrompt" placeholder="Scan product barcode" />
+            </flux:field>
+
+            <flux:field>
+                <flux:label>Session id</flux:label>
+                <flux:input wire:model="scannerSessionId" placeholder="time-clock-scan" />
+            </flux:field>
+
+            <flux:field>
+                <flux:label>Continuous</flux:label>
+                <flux:switch wire:model="scannerContinuous" />
+            </flux:field>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+            <flux:button wire:click="scannerOpen" variant="primary" class="w-full col-span-2" icon="qr-code">
+                Open scanner
+            </flux:button>
+            <flux:button wire:click="scannerClearHistory" variant="ghost" class="w-full col-span-2">
+                Clear history
+            </flux:button>
+        </div>
+
+        @if ($scannerLastData !== '')
+            <div class="space-y-1 rounded-xl border border-zinc-200/60 dark:border-zinc-800 p-3">
+                <div class="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Last scan</div>
+                <div class="font-mono text-sm break-all text-zinc-800 dark:text-zinc-100">{{ $scannerLastData }}</div>
+                <div class="text-[11px] text-zinc-500">
+                    format: <span class="font-mono">{{ $scannerLastFormat }}</span>
+                    @if ($scannerLastId !== '')
+                        · id: <span class="font-mono">{{ $scannerLastId }}</span>
+                    @endif
+                </div>
+            </div>
+        @endif
+
+        @if (count($scannerHistory) > 0)
+            <div class="space-y-2">
+                <flux:heading size="sm">History</flux:heading>
+                <div class="max-h-40 overflow-y-auto space-y-1.5 rounded-xl border border-zinc-200/60 dark:border-zinc-800 p-2">
+                    @foreach ($scannerHistory as $scan)
+                        <div wire:key="scan-{{ $loop->index }}-{{ $scan['at'] ?? '' }}" class="px-2.5 py-2 rounded-lg bg-zinc-50 dark:bg-zinc-950/40 border border-zinc-200/50 dark:border-zinc-800 text-xs">
+                            <div class="font-mono font-semibold text-zinc-800 dark:text-zinc-100 break-all">{{ $scan['data'] ?? '' }}</div>
+                            <div class="text-[10px] text-zinc-500">{{ $scan['format'] ?? '?' }} · {{ $scan['at'] ?? '' }}</div>
+                        </div>
+                    @endforeach
+                </div>
+            </div>
+        @endif
     </flux:modal>
 
 </div>
