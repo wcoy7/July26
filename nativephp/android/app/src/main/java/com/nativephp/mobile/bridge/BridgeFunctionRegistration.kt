@@ -2,6 +2,7 @@ package com.nativephp.mobile.bridge
 
 import android.content.Context
 import androidx.fragment.app.FragmentActivity
+import com.nativephp.mobile.bridge.functions.BackgroundTasksFunctions
 import com.nativephp.mobile.bridge.functions.EdgeFunctions
 import com.nativephp.mobile.bridge.functions.GeolocationFunctions
 import com.nativephp.mobile.bridge.functions.SecureStorageFunctions
@@ -24,6 +25,11 @@ fun registerBridgeFunctions(activity: FragmentActivity, context: Context) {
     registry.register("Vibration.HasHaptics", VibrationFunctions.HasHaptics(context))
     registry.register("Vibration.Cancel", VibrationFunctions.Cancel(context))
     registry.register("Vibration.PlayPattern", VibrationFunctions.PlayPattern(context))
+    registry.register("BackgroundTasks.Create", BackgroundTasksFunctions.Create(context))
+    registry.register("BackgroundTasks.Get", BackgroundTasksFunctions.Get(context))
+    registry.register("BackgroundTasks.List", BackgroundTasksFunctions.List(context))
+    registry.register("BackgroundTasks.Update", BackgroundTasksFunctions.Update(context))
+    registry.register("BackgroundTasks.Delete", BackgroundTasksFunctions.Delete(context))
 
     // Register plugin bridge functions
     registerPluginBridgeFunctions(activity, context)

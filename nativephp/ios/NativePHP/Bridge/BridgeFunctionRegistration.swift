@@ -14,6 +14,11 @@ func registerBridgeFunctions() {
     registry.register("Vibration.HasHaptics", function: VibrationFunctions.HasHaptics())
     registry.register("Vibration.Cancel", function: VibrationFunctions.Cancel())
     registry.register("Vibration.PlayPattern", function: VibrationFunctions.PlayPattern())
+    registry.register("BackgroundTasks.Create", function: BackgroundTasksFunctions.Create())
+    registry.register("BackgroundTasks.Get", function: BackgroundTasksFunctions.Get())
+    registry.register("BackgroundTasks.List", function: BackgroundTasksFunctions.List())
+    registry.register("BackgroundTasks.Update", function: BackgroundTasksFunctions.Update())
+    registry.register("BackgroundTasks.Delete", function: BackgroundTasksFunctions.Delete())
 
     // Register plugin bridge functions
     registerPluginBridgeFunctions()

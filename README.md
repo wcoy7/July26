@@ -12,6 +12,7 @@ The **Employee Time Portal** provides a secure, streamlined interface for staff 
 - **GPS Location Tracking**: Pins employee geolocation coordinates during punch events and displays their location on an interactive OpenStreetMap Leaflet map.
 - **Secure Storage (Keychain)**: Demo UI on the time-clock screen to save, retrieve, and delete sensitive key/value pairs via the device secure store (iOS Keychain / Android EncryptedSharedPreferences).
 - **Haptic Feedback (Vibration)**: Demo UI to trigger single taps and preset patterns via a custom Vibration plugin (iOS Core Haptics / Android VibrationEffect), inspired by [jvdluk/pro-vibration](https://nativephp.com/plugins/jvdluk/pro-vibration).
+- **Background Tasks**: Custom on-device task registry with full CRUD (create/list/get/update/delete), inspired by [nativephp/mobile-background-tasks](https://nativephp.com/plugins/nativephp/mobile-background-tasks).
 - **Offline / Native Ready**: Designed to run as a mobile app utilizing NativePHP Mobile with offline fallbacks.
 
 ---
@@ -76,6 +77,64 @@ Native implementations:
 - **Android** (`VibrationFunctions.kt`): `VibrationEffect` one-shot / waveform; intensity mapped to amplitude. Sharpness ignored. Requires `VIBRATE` permission.
 - **Registration**: `BridgeFunctionRegistration.swift` / `.kt`.
 
+### `App\Plugins\BackgroundTasks`
+Custom background-task registry inspired by [nativephp/mobile-background-tasks](https://nativephp.com/plugins/nativephp/mobile-background-tasks). Tasks are stored on-device and managed via CRUD bridge calls (intervals clamped to a **15-minute** minimum, matching mobile scheduler limits).
+
+| Method | Bridge call | Returns |
+|--------|-------------|---------|
+| `BackgroundTasks::create($attributes)` | `BackgroundTasks.Create` | `?array` task |
+| `BackgroundTasks::get($id)` | `BackgroundTasks.Get` | `?array` task |
+| `BackgroundTasks::list()` | `BackgroundTasks.List` | `list<array>` |
+| `BackgroundTasks::update($id, $attributes)` | `BackgroundTasks.Update` | `?array` task |
+| `BackgroundTasks::delete($id)` | `BackgroundTasks.Delete` | `bool` |
+
+Task shape:
+
+```php
+[
+    'id' => 'uuid',
+    'name' => 'sync:data',
+    'command' => 'sync:data',
+    'intervalMinutes' => 15,
+    'enabled' => true,
+    'longRunning' => false,
+    'constraints' => [
+        'onAnyNetwork' => false,
+        'onWifi' => false,
+        'whileCharging' => false,
+        'whenBatteryNotLow' => false,
+        'whenStorageNotLow' => false,
+        'whenIdle' => false,
+    ],
+    'createdAt' => '...',
+    'updatedAt' => '...',
+]
+```
+
+Example:
+
+```php
+use App\Plugins\BackgroundTasks;
+
+$task = BackgroundTasks::create([
+    'name' => 'sync:data',
+    'intervalMinutes' => 15,
+    'constraints' => ['onWifi' => true, 'whileCharging' => true],
+]);
+
+BackgroundTasks::update($task['id'], ['enabled' => false]);
+BackgroundTasks::list();
+BackgroundTasks::delete($task['id']);
+```
+
+Native implementations:
+
+- **iOS** (`BackgroundTasksPlugin.swift`): JSON registry in `UserDefaults`.
+- **Android** (`BackgroundTasksFunctions.kt`): JSON registry in `SharedPreferences`.
+- **Registration**: `BackgroundTasks.Create|Get|List|Update|Delete` on the bridge.
+
+> **Note:** This custom plugin manages the **task registry** (CRUD). Full OS-level WorkManager / BGTaskScheduler execution of artisan commands (as in the paid official plugin) can be layered on top of these stored definitions later.
+
 ### `⚡time-clock` (Livewire Component)
 - **Controller (`time-clock.php`)**: Manages employee state transitions, validates PIN codes, updates shift history, refreshes GPS, Secure Storage actions, and haptic demo actions (`vibrateTap`, `vibrateSuccess`, `vibrateError`, `vibrateCancel`).
 - **View (`time-clock.blade.php`)**: AlpineJS digital clock, PIN keypad, shift actions, Leaflet map (`wire:ignore`), status feedback, **HAPTIC** and **KEYCHAIN** Flux modals.
@@ -85,6 +144,7 @@ Native implementations:
 ## 🧪 Tests
 - **`tests/Feature/SecureStorageTest.php`**: Unit-style feature coverage for set/get/delete (including mocked `nativephp_call` success/failure paths).
 - **`tests/Feature/VibrationTest.php`**: Vibration vibrate/hasHaptics/cancel/pattern/preset coverage with mocked bridge calls.
+- **`tests/Feature/BackgroundTasksTest.php`**: Background task create/get/list/update/delete, interval clamping, and missing-bridge handling.
 - **`tests/Feature/TimeClockTest.php`**: Time-clock UI and behavior tests, including Secure Storage and Haptic modal markup and Livewire actions.
 
 ---
