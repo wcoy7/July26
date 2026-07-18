@@ -181,6 +181,13 @@ return [
         'storage/framework/cache',
         'storage/framework/testing',
         'storage/logs/laravel.log',
+        // Keep agent tooling / local editor state out of the mobile app bundle
+        '.agents',
+        '.claude',
+        '.grok',
+        '.zed',
+        '.mcp.json',
+        '.npmrc',
     ],
 
     /*
