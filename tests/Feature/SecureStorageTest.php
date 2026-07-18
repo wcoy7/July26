@@ -10,6 +10,7 @@ if (! function_exists('nativephp_call')) {
         if (isset($mockNativePhpCalls[$function])) {
             return call_user_func($mockNativePhpCalls[$function], $payload);
         }
+
         return json_encode(['success' => false, 'error' => 'Mock function not set']);
     }
 }
@@ -40,6 +41,7 @@ test('it can set a secure value via the bridge', function () {
         $data = json_decode($payload, true);
         expect($data['key'])->toBe('auth_token');
         expect($data['value'])->toBe('secret123');
+
         return json_encode(['success' => true]);
     };
 
@@ -62,6 +64,7 @@ test('it can retrieve a secure value via the bridge', function () {
     $mockNativePhpCalls['SecureStorage.Get'] = function (string $payload) {
         $data = json_decode($payload, true);
         expect($data['key'])->toBe('auth_token');
+
         return json_encode(['success' => true, 'value' => 'secret123']);
     };
 
@@ -84,6 +87,7 @@ test('it can delete a secure value via the bridge', function () {
     $mockNativePhpCalls['SecureStorage.Delete'] = function (string $payload) {
         $data = json_decode($payload, true);
         expect($data['key'])->toBe('auth_token');
+
         return json_encode(['success' => true]);
     };
 

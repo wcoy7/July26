@@ -6,10 +6,6 @@ class SecureStorage
 {
     /**
      * Store a key-value pair securely.
-     *
-     * @param string $key
-     * @param string $value
-     * @return bool
      */
     public static function set(string $key, string $value): bool
     {
@@ -25,14 +21,12 @@ class SecureStorage
         }
 
         $result = json_decode($resultJson, true);
+
         return (bool) ($result['success'] ?? false);
     }
 
     /**
      * Retrieve a stored value securely by its key.
-     *
-     * @param string $key
-     * @return string|null
      */
     public static function get(string $key): ?string
     {
@@ -57,9 +51,6 @@ class SecureStorage
 
     /**
      * Delete a stored key-value pair.
-     *
-     * @param string $key
-     * @return bool
      */
     public static function delete(string $key): bool
     {
@@ -75,6 +66,7 @@ class SecureStorage
         }
 
         $result = json_decode($resultJson, true);
+
         return (bool) ($result['success'] ?? false);
     }
 }
