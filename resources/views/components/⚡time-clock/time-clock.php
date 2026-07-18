@@ -15,6 +15,9 @@ new class extends Component
     public string $secureStorageResult = '';
     public string $secureStorageStatusMessage = '';
 
+    public string $vibrationStatusMessage = '';
+    public bool $supportsHaptics = false;
+
     // Track state of validated employee
     public ?string $validatedEmployee = null;
     public ?string $validatedPin = null;
@@ -28,6 +31,7 @@ new class extends Component
 
     public function mount(): void
     {
+        $this->supportsHaptics = \App\Plugins\Vibration::hasHaptics();
         // Initial mock history events
         $this->history = [
             [
@@ -190,6 +194,34 @@ new class extends Component
         } else {
             $this->secureStorageStatusMessage = 'Error: Failed to delete value.';
         }
+    }
+
+    public function vibrateTap(): void
+    {
+        $this->vibrationStatusMessage = '';
+        $ok = \App\Plugins\Vibration::vibrate(duration: 50, intensity: 0.6, sharpness: 0.7);
+        $this->vibrationStatusMessage = $ok ? 'Tap feedback sent.' : 'Haptics unavailable or failed.';
+    }
+
+    public function vibrateSuccess(): void
+    {
+        $this->vibrationStatusMessage = '';
+        $ok = \App\Plugins\Vibration::preset('success')->play();
+        $this->vibrationStatusMessage = $ok ? 'Success pattern played.' : 'Haptics unavailable or failed.';
+    }
+
+    public function vibrateError(): void
+    {
+        $this->vibrationStatusMessage = '';
+        $ok = \App\Plugins\Vibration::preset('error')->play();
+        $this->vibrationStatusMessage = $ok ? 'Error pattern played.' : 'Haptics unavailable or failed.';
+    }
+
+    public function vibrateCancel(): void
+    {
+        $this->vibrationStatusMessage = '';
+        $ok = \App\Plugins\Vibration::cancelVibration();
+        $this->vibrationStatusMessage = $ok ? 'Vibration cancelled.' : 'Cancel failed or bridge unavailable.';
     }
 
     private function logEvent(string $name, string $action, string $time, string $date): void

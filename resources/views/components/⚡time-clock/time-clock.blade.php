@@ -230,6 +230,12 @@
         <div class="flex justify-between items-center px-1">
             <span class="text-[10px] font-bold uppercase tracking-wider text-zinc-400">GPS Geolocation</span>
             <div class="flex gap-3">
+                <flux:modal.trigger name="vibration-modal">
+                    <button type="button" class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 flex items-center gap-1 text-[10px] font-bold transition-all">
+                        <flux:icon name="bolt" class="w-3.5 h-3.5" />
+                        HAPTIC
+                    </button>
+                </flux:modal.trigger>
                 <flux:modal.trigger name="secure-storage-modal">
                     <button type="button" class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 flex items-center gap-1 text-[10px] font-bold transition-all">
                         <flux:icon name="key" class="w-3.5 h-3.5" />
@@ -303,6 +309,33 @@
             </button>
         </div>
     @endif
+
+    <flux:modal name="vibration-modal" class="md:w-96 space-y-4">
+        <div class="space-y-1">
+            <flux:heading size="lg">Haptic Feedback</flux:heading>
+            <flux:text size="sm" class="text-zinc-500">
+                Trigger device vibration patterns (iOS Core Haptics / Android VibrationEffect).
+                @if ($supportsHaptics)
+                    Device reports haptics support.
+                @else
+                    Haptics not detected (web or unsupported device).
+                @endif
+            </flux:text>
+        </div>
+
+        @if ($vibrationStatusMessage)
+            <div class="p-2.5 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/40 text-blue-800 dark:text-blue-400 rounded-xl text-xs font-semibold">
+                {{ $vibrationStatusMessage }}
+            </div>
+        @endif
+
+        <div class="grid grid-cols-2 gap-2">
+            <flux:button wire:click="vibrateTap" variant="outline" class="w-full">Tap</flux:button>
+            <flux:button wire:click="vibrateSuccess" variant="primary" class="w-full">Success</flux:button>
+            <flux:button wire:click="vibrateError" variant="danger" class="w-full">Error</flux:button>
+            <flux:button wire:click="vibrateCancel" variant="ghost" class="w-full">Cancel</flux:button>
+        </div>
+    </flux:modal>
 
     <flux:modal name="secure-storage-modal" class="md:w-96 space-y-4">
         <div class="space-y-1">

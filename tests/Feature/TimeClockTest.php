@@ -83,6 +83,37 @@ test('it renders the secure storage modal button and modal markup', function () 
         ->assertSeeHtml('KEYCHAIN');
 });
 
+test('it renders the vibration modal button and modal markup', function () {
+    Livewire::test('time-clock')
+        ->assertSeeHtml('vibration-modal')
+        ->assertSeeHtml('HAPTIC');
+});
+
+test('it can trigger vibration actions via Livewire', function () {
+    global $mockNativePhpCalls;
+    $mockNativePhpCalls = [];
+
+    $mockNativePhpCalls['Vibration.HasHaptics'] = fn () => json_encode(['success' => true, 'supported' => true]);
+    $mockNativePhpCalls['Vibration.Vibrate'] = function (string $payload) {
+        $data = json_decode($payload, true);
+        expect($data['duration'])->toBe(50);
+
+        return json_encode(['success' => true]);
+    };
+    $mockNativePhpCalls['Vibration.PlayPattern'] = fn () => json_encode(['success' => true]);
+    $mockNativePhpCalls['Vibration.Cancel'] = fn () => json_encode(['success' => true]);
+
+    Livewire::test('time-clock')
+        ->call('vibrateTap')
+        ->assertSet('vibrationStatusMessage', 'Tap feedback sent.')
+        ->call('vibrateSuccess')
+        ->assertSet('vibrationStatusMessage', 'Success pattern played.')
+        ->call('vibrateError')
+        ->assertSet('vibrationStatusMessage', 'Error pattern played.')
+        ->call('vibrateCancel')
+        ->assertSet('vibrationStatusMessage', 'Vibration cancelled.');
+});
+
 test('it can save, retrieve, and delete values via Livewire interface', function () {
     global $mockNativePhpCalls;
     $mockNativePhpCalls = [];

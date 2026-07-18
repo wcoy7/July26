@@ -11,6 +11,7 @@ The **Employee Time Portal** provides a secure, streamlined interface for staff 
 - **Shift & Break Logging**: Allows employees to transition between states (Clock In, Start Break, End Break, Clock Out) with automated validation and break-ending logic.
 - **GPS Location Tracking**: Pins employee geolocation coordinates during punch events and displays their location on an interactive OpenStreetMap Leaflet map.
 - **Secure Storage (Keychain)**: Demo UI on the time-clock screen to save, retrieve, and delete sensitive key/value pairs via the device secure store (iOS Keychain / Android EncryptedSharedPreferences).
+- **Haptic Feedback (Vibration)**: Demo UI to trigger single taps and preset patterns via a custom Vibration plugin (iOS Core Haptics / Android VibrationEffect), inspired by [jvdluk/pro-vibration](https://nativephp.com/plugins/jvdluk/pro-vibration).
 - **Offline / Native Ready**: Designed to run as a mobile app utilizing NativePHP Mobile with offline fallbacks.
 
 ---
@@ -56,15 +57,35 @@ Native implementations (registered on the bridge):
 - **Android** (`nativephp/android/.../SecureStorageFunctions.kt`): `EncryptedSharedPreferences` (AES-256 via AndroidX Security Crypto).
 - **Registration**: `BridgeFunctionRegistration.swift` / `BridgeFunctionRegistration.kt` wire `SecureStorage.Set|Get|Delete` into the NativePHP bridge registry.
 
+### `App\Plugins\Vibration`
+Custom haptic API (inspired by [jvdluk/pro-vibration](https://nativephp.com/plugins/jvdluk/pro-vibration)):
+
+| Method | Bridge call | Returns |
+|--------|-------------|---------|
+| `Vibration::vibrate($duration, $intensity, $sharpness?)` | `Vibration.Vibrate` | `bool` |
+| `Vibration::hasHaptics()` | `Vibration.HasHaptics` | `bool` |
+| `Vibration::cancelVibration()` | `Vibration.Cancel` | `bool` |
+| `Vibration::pattern($steps = [])` | builder → `Vibration.PlayPattern` | `VibrationPatternBuilder` |
+| `Vibration::preset($name)` | builder with preset steps | `VibrationPatternBuilder` |
+
+Presets: `success`, `error`, `warning`, `notification`, `double_click`.
+
+Native implementations:
+
+- **iOS** (`VibrationPlugin.swift`): Core Haptics (`CHHapticEngine`) with intensity + sharpness.
+- **Android** (`VibrationFunctions.kt`): `VibrationEffect` one-shot / waveform; intensity mapped to amplitude. Sharpness ignored. Requires `VIBRATE` permission.
+- **Registration**: `BridgeFunctionRegistration.swift` / `.kt`.
+
 ### `⚡time-clock` (Livewire Component)
-- **Controller (`time-clock.php`)**: Manages employee state transitions, validates PIN codes, updates shift history, refreshes GPS, and exposes Secure Storage actions (`saveSecureStorage`, `getSecureStorage`, `deleteSecureStorage`).
-- **View (`time-clock.blade.php`)**: AlpineJS digital clock, PIN keypad, shift actions, Leaflet map (`wire:ignore`), status feedback, plus a **KEYCHAIN** control that opens a Flux UI modal to set/get/delete secure storage entries.
+- **Controller (`time-clock.php`)**: Manages employee state transitions, validates PIN codes, updates shift history, refreshes GPS, Secure Storage actions, and haptic demo actions (`vibrateTap`, `vibrateSuccess`, `vibrateError`, `vibrateCancel`).
+- **View (`time-clock.blade.php`)**: AlpineJS digital clock, PIN keypad, shift actions, Leaflet map (`wire:ignore`), status feedback, **HAPTIC** and **KEYCHAIN** Flux modals.
 
 ---
 
 ## 🧪 Tests
 - **`tests/Feature/SecureStorageTest.php`**: Unit-style feature coverage for set/get/delete (including mocked `nativephp_call` success/failure paths).
-- **`tests/Feature/TimeClockTest.php`**: Time-clock UI and behavior tests, including Secure Storage modal markup and Livewire actions.
+- **`tests/Feature/VibrationTest.php`**: Vibration vibrate/hasHaptics/cancel/pattern/preset coverage with mocked bridge calls.
+- **`tests/Feature/TimeClockTest.php`**: Time-clock UI and behavior tests, including Secure Storage and Haptic modal markup and Livewire actions.
 
 ---
 
