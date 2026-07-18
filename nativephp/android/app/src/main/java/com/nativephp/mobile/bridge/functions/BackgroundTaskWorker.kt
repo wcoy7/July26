@@ -38,9 +38,24 @@ class BackgroundTaskWorker(
                 BackgroundTasksScheduler.markLastRun(applicationContext, taskId)
             }
 
+            BackgroundTasksScheduler.notifyTaskCompleted(
+                applicationContext,
+                taskId ?: "unknown",
+                command,
+                output,
+                success = true
+            )
+
             Result.success()
         } catch (e: Exception) {
             Log.e(TAG, "Background task failed id=$taskId", e)
+            BackgroundTasksScheduler.notifyTaskCompleted(
+                applicationContext,
+                taskId ?: "unknown",
+                command,
+                e.message ?: "error",
+                success = false
+            )
             Result.retry()
         }
     }

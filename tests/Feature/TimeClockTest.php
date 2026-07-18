@@ -116,6 +116,36 @@ test('it renders the background tasks modal button and markup', function () {
         ->assertSeeHtml('TASKS');
 });
 
+test('it renders the local notifications modal button and markup', function () {
+    Livewire::test('time-clock')
+        ->assertSeeHtml('local-notifications-modal')
+        ->assertSeeHtml('NOTIFY');
+});
+
+test('it can show a local notification from the time clock modal', function () {
+    global $mockNativePhpCalls;
+    $mockNativePhpCalls = [];
+
+    $mockNativePhpCalls['LocalNotifications.HasPermission'] = fn () => json_encode([
+        'success' => true,
+        'granted' => true,
+    ]);
+    $mockNativePhpCalls['LocalNotifications.Show'] = function (string $payload) {
+        $data = json_decode($payload, true);
+        expect($data['title'])->toBe('Test title');
+        expect($data['body'])->toBe('Test body');
+
+        return json_encode(['success' => true, 'id' => 'notif-1']);
+    };
+
+    Livewire::test('time-clock')
+        ->set('notifyTitle', 'Test title')
+        ->set('notifyBody', 'Test body')
+        ->call('notifyShowNow')
+        ->assertSet('notifyLastId', 'notif-1')
+        ->assertSee('Notification posted');
+});
+
 test('it can create list update run and delete a background task via the modal actions', function () {
     global $mockNativePhpCalls;
     $mockNativePhpCalls = [];
@@ -197,6 +227,9 @@ test('it can create list update run and delete a background task via the modal a
         ->call('bgRunNow')
         ->assertSee('RunNow completed')
         ->assertSet('bgTaskOutput', fn ($out) => str_contains($out, 'Simplicity is the ultimate sophistication.'))
+        ->assertSet('bgTaskBanner', fn ($banner) => str_contains($banner, 'RunNow completed'))
+        ->call('dismissBgTaskBanner')
+        ->assertSet('bgTaskBanner', '')
         ->call('bgDelete')
         ->assertSet('bgTaskId', '')
         ->assertSee('Task deleted');

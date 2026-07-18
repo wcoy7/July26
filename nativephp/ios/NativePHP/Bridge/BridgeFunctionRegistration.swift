@@ -21,6 +21,12 @@ func registerBridgeFunctions() {
     registry.register("BackgroundTasks.Delete", function: BackgroundTasksFunctions.Delete())
     registry.register("BackgroundTasks.Sync", function: BackgroundTasksFunctions.Sync())
     registry.register("BackgroundTasks.RunNow", function: BackgroundTasksFunctions.RunNow())
+    registry.register("LocalNotifications.RequestPermission", function: LocalNotificationsFunctions.RequestPermission())
+    registry.register("LocalNotifications.HasPermission", function: LocalNotificationsFunctions.HasPermission())
+    registry.register("LocalNotifications.Show", function: LocalNotificationsFunctions.Show())
+    registry.register("LocalNotifications.Schedule", function: LocalNotificationsFunctions.Schedule())
+    registry.register("LocalNotifications.Cancel", function: LocalNotificationsFunctions.Cancel())
+    registry.register("LocalNotifications.CancelAll", function: LocalNotificationsFunctions.CancelAll())
 
     // BGTaskScheduler handlers must be registered before launch ends
     NativePHPPluginRegistry.shared.registerOnAppLaunch("BackgroundTasks") {

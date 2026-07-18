@@ -5,6 +5,7 @@ import androidx.fragment.app.FragmentActivity
 import com.nativephp.mobile.bridge.functions.BackgroundTasksFunctions
 import com.nativephp.mobile.bridge.functions.EdgeFunctions
 import com.nativephp.mobile.bridge.functions.GeolocationFunctions
+import com.nativephp.mobile.bridge.functions.LocalNotificationsFunctions
 import com.nativephp.mobile.bridge.functions.SecureStorageFunctions
 import com.nativephp.mobile.bridge.functions.VibrationFunctions
 import com.nativephp.mobile.bridge.plugins.registerPluginBridgeFunctions
@@ -32,12 +33,24 @@ fun registerBridgeFunctions(activity: FragmentActivity, context: Context) {
     registry.register("BackgroundTasks.Delete", BackgroundTasksFunctions.Delete(context))
     registry.register("BackgroundTasks.Sync", BackgroundTasksFunctions.Sync(context))
     registry.register("BackgroundTasks.RunNow", BackgroundTasksFunctions.RunNow(context))
+    registry.register("LocalNotifications.RequestPermission", LocalNotificationsFunctions.RequestPermission(activity, context))
+    registry.register("LocalNotifications.HasPermission", LocalNotificationsFunctions.HasPermission(context))
+    registry.register("LocalNotifications.Show", LocalNotificationsFunctions.Show(context))
+    registry.register("LocalNotifications.Schedule", LocalNotificationsFunctions.Schedule(context))
+    registry.register("LocalNotifications.Cancel", LocalNotificationsFunctions.Cancel(context))
+    registry.register("LocalNotifications.CancelAll", LocalNotificationsFunctions.CancelAll(context))
 
     // Re-sync WorkManager schedules after PHP/app is ready
     try {
         BackgroundTasksScheduler.rescheduleAll(context)
     } catch (e: Exception) {
         android.util.Log.w("BridgeRegistration", "BackgroundTasks schedule bootstrap failed: ${e.message}")
+    }
+
+    try {
+        LocalNotificationsFunctions.ensureChannel(context)
+    } catch (e: Exception) {
+        android.util.Log.w("BridgeRegistration", "LocalNotifications channel setup failed: ${e.message}")
     }
 
     // Register plugin bridge functions

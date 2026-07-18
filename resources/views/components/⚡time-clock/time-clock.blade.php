@@ -247,6 +247,12 @@
                         TASKS
                     </button>
                 </flux:modal.trigger>
+                <flux:modal.trigger name="local-notifications-modal">
+                    <button type="button" wire:click="notifyRefreshPermission" class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 flex items-center gap-1 text-[10px] font-bold transition-all">
+                        <flux:icon name="bell" class="w-3.5 h-3.5" />
+                        NOTIFY
+                    </button>
+                </flux:modal.trigger>
                 <flux:modal.trigger name="vibration-modal">
                     <button type="button" class="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 flex items-center gap-1 text-[10px] font-bold transition-all">
                         <flux:icon name="bolt" class="w-3.5 h-3.5" />
@@ -301,6 +307,33 @@
         </div>
     </div>
 
+    <!-- Dismissible banner when a background task finishes (or fails) -->
+    @if ($bgTaskBanner !== '')
+        <div
+            class="w-full p-3 rounded-2xl flex items-start justify-between gap-2 shadow-sm border
+                {{ str_starts_with($bgTaskBanner, 'Error')
+                    ? 'bg-red-50 border-red-200 text-red-800 dark:bg-red-950/20 dark:border-red-900/40 dark:text-red-400'
+                    : 'bg-indigo-50 border-indigo-200 text-indigo-900 dark:bg-indigo-950/20 dark:border-indigo-900/40 dark:text-indigo-300' }}"
+            role="status"
+        >
+            <div class="flex items-start gap-2 min-w-0">
+                <flux:icon name="bell" class="w-4 h-4 flex-shrink-0 mt-0.5" />
+                <div class="min-w-0">
+                    <div class="text-[10px] font-bold uppercase tracking-wider opacity-70">Background task</div>
+                    <div class="text-xs font-semibold break-words">{{ $bgTaskBanner }}</div>
+                </div>
+            </div>
+            <button
+                type="button"
+                wire:click="dismissBgTaskBanner"
+                class="flex-shrink-0 text-current opacity-70 hover:opacity-100 p-1"
+                aria-label="Dismiss"
+            >
+                <flux:icon name="x-mark" class="w-4 h-4" />
+            </button>
+        </div>
+    @endif
+
     <!-- Bottom Feedback Alert (Clock-in Result) -->
     @if ($status)
         <div x-data="{ show: true }" 
@@ -332,6 +365,7 @@
             <flux:heading size="lg">Background Tasks</flux:heading>
             <flux:text size="sm" class="text-zinc-500">
                 CRUD test for on-device scheduled artisan jobs (WorkManager / BGTaskScheduler).
+                When a task finishes (including in the background), a <strong>system notification</strong> is posted so you can verify it ran — allow notifications under <strong>NOTIFY</strong> first.
             </flux:text>
         </div>
 
@@ -397,6 +431,55 @@
                 <flux:heading size="sm">Task output</flux:heading>
                 <pre class="p-3 max-h-48 overflow-auto rounded-xl bg-zinc-950 text-emerald-300 text-[11px] font-mono whitespace-pre-wrap break-all border border-zinc-800">{{ $bgTaskOutput }}</pre>
             </div>
+        @endif
+    </flux:modal>
+
+    <flux:modal name="local-notifications-modal" class="md:w-96 space-y-4">
+        <div class="space-y-1">
+            <flux:heading size="lg">Local Notifications</flux:heading>
+            <flux:text size="sm" class="text-zinc-500">
+                System tray / notification center alerts you can swipe away.
+                <strong class="text-zinc-700 dark:text-zinc-200">Allow = permission only. Show now = actually send a notification.</strong>
+                @if ($notifyHasPermission)
+                    · Permission: granted.
+                @else
+                    · Permission: not granted.
+                @endif
+            </flux:text>
+        </div>
+
+        @if ($notifyStatusMessage)
+            <div class="p-2.5 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/40 text-blue-800 dark:text-blue-400 rounded-xl text-xs font-semibold">
+                {{ $notifyStatusMessage }}
+            </div>
+        @endif
+
+        <div class="space-y-3">
+            <flux:field>
+                <flux:label>Title</flux:label>
+                <flux:input wire:model="notifyTitle" />
+            </flux:field>
+            <flux:field>
+                <flux:label>Body</flux:label>
+                <flux:input wire:model="notifyBody" />
+            </flux:field>
+            <flux:field>
+                <flux:label>Schedule delay (seconds)</flux:label>
+                <flux:input type="number" wire:model.number="notifyDelaySeconds" min="1" step="1" />
+            </flux:field>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+            <flux:button wire:click="notifyRequestPermission" variant="outline" class="w-full">1. Allow</flux:button>
+            <flux:button wire:click="notifyRefreshPermission" variant="ghost" class="w-full">Check permission</flux:button>
+            <flux:button wire:click="notifyShowNow" variant="primary" class="w-full col-span-2" icon="bell">2. Show now</flux:button>
+            <flux:button wire:click="notifySchedule" variant="filled" class="w-full">Schedule later</flux:button>
+            <flux:button wire:click="notifyCancelLast" variant="outline" class="w-full">Cancel last</flux:button>
+            <flux:button wire:click="notifyCancelAll" variant="danger" class="w-full col-span-2">Cancel all</flux:button>
+        </div>
+
+        @if ($notifyLastId !== '')
+            <flux:text size="sm" class="font-mono text-zinc-500 break-all">Last id: {{ $notifyLastId }}</flux:text>
         @endif
     </flux:modal>
 

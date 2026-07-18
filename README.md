@@ -183,6 +183,31 @@ Presets: `success`, `error`, `warning`, `notification`, `double_click`.
 
 `getCurrentPosition()` via `Geolocation.GetLocation`, with normalized errors and offline fallbacks.
 
+### `App\Plugins\LocalNotifications`
+
+System **notification center / tray** notifications (user can swipe to dismiss). Local only — no FCM/APNs server.
+
+| Method | Bridge | Returns |
+|--------|--------|---------|
+| `requestPermission()` | `LocalNotifications.RequestPermission` | `bool` |
+| `hasPermission()` | `LocalNotifications.HasPermission` | `bool` |
+| `show($title, $body, $id?)` | `LocalNotifications.Show` | `array` |
+| `schedule($title, $body, $delaySeconds, $id?)` | `LocalNotifications.Schedule` | `array` |
+| `cancel($id)` | `LocalNotifications.Cancel` | `bool` |
+| `cancelAll()` | `LocalNotifications.CancelAll` | `bool` |
+
+```php
+use App\Plugins\LocalNotifications;
+
+LocalNotifications::requestPermission();
+LocalNotifications::show('Shift reminder', 'Time to clock in!');
+LocalNotifications::schedule('Break over', 'Please return to work.', 60);
+```
+
+- **iOS**: `UserNotifications` (`UNUserNotificationCenter`)
+- **Android**: `NotificationCompat` + channel + `AlarmManager` for scheduled
+- Time-clock toolbar: **NOTIFY** modal for manual testing
+
 ---
 
 ## 🖥 Livewire UI

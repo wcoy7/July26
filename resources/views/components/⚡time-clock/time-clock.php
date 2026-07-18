@@ -2,8 +2,12 @@
 
 use App\Plugins\BackgroundTasks;
 use App\Plugins\Geolocation;
+use App\Plugins\LocalNotifications;
 use App\Plugins\Vibration;
+use Flux\Flux;
+use Illuminate\Support\Str;
 use Livewire\Component;
+use Native\Mobile\Facades\Dialog;
 
 new class extends Component
 {
@@ -40,8 +44,24 @@ new class extends Component
 
     public string $bgTaskOutput = '';
 
+    /** Dismissible banner on the main time-clock screen (outside the modal). */
+    public string $bgTaskBanner = '';
+
     /** @var list<array<string, mixed>> */
     public array $bgTasks = [];
+
+    // Local notifications test modal
+    public string $notifyTitle = 'Time Portal';
+
+    public string $notifyBody = 'Hello from LocalNotifications!';
+
+    public int $notifyDelaySeconds = 5;
+
+    public string $notifyStatusMessage = '';
+
+    public string $notifyLastId = '';
+
+    public bool $notifyHasPermission = false;
 
     // Track state of validated employee
     public ?string $validatedEmployee = null;
@@ -399,8 +419,10 @@ new class extends Component
         $result = BackgroundTasks::runNow($id);
 
         if (! ($result['success'] ?? false)) {
-            $this->bgTaskStatusMessage = 'Error: '.($result['error'] ?? 'RunNow failed or bridge unavailable.');
+            $message = 'Error: '.($result['error'] ?? 'RunNow failed or bridge unavailable.');
+            $this->bgTaskStatusMessage = $message;
             $this->bgTaskOutput = json_encode($result, JSON_PRETTY_PRINT) ?: '';
+            $this->notifyBackgroundTask($message, success: false);
 
             return;
         }
@@ -411,23 +433,167 @@ new class extends Component
             : 'RunNow completed.';
 
         $lines = [];
+        $firstSnippet = '';
         if (is_array($results)) {
             foreach ($results as $row) {
                 if (! is_array($row)) {
                     continue;
                 }
+                $output = trim((string) ($row['output'] ?? ''));
                 $lines[] = sprintf(
                     "[%s] %s\n%s",
                     $row['id'] ?? '?',
                     $row['command'] ?? '?',
-                    trim((string) ($row['output'] ?? ''))
+                    $output
                 );
+                if ($firstSnippet === '' && $output !== '') {
+                    $firstSnippet = $output;
+                }
             }
         }
 
         $this->bgTaskOutput = $lines !== []
             ? implode("\n\n---\n\n", $lines)
             : (json_encode($result, JSON_PRETTY_PRINT) ?: '');
+
+        $banner = $this->bgTaskStatusMessage;
+        if ($firstSnippet !== '') {
+            $banner .= ' · '.Str::limit(preg_replace('/\s+/', ' ', $firstSnippet) ?? $firstSnippet, 120);
+        }
+
+        $this->notifyBackgroundTask($banner, success: true, detail: $this->bgTaskOutput);
+
+        // System tray notification (also fired natively after each task run)
+        if (! LocalNotifications::hasPermission()) {
+            LocalNotifications::requestPermission();
+        }
+
+        $notif = LocalNotifications::show(
+            'Background task finished',
+            Str::limit($banner, 160),
+            'bg_task_'.($id ?? 'all').'_'.time()
+        );
+
+        if ($notif['success'] ?? false) {
+            $this->bgTaskStatusMessage .= ' · Notification sent (check banner / Notification Center).';
+        } else {
+            $this->bgTaskStatusMessage .= ' · Notification failed: '.($notif['error'] ?? 'unknown — open NOTIFY → Allow first.');
+        }
+    }
+
+    public function dismissBgTaskBanner(): void
+    {
+        $this->bgTaskBanner = '';
+    }
+
+    public function notifyRefreshPermission(): void
+    {
+        $this->notifyHasPermission = LocalNotifications::hasPermission();
+        $this->notifyStatusMessage = $this->notifyHasPermission
+            ? 'Notifications permission granted.'
+            : 'Notifications not permitted yet — tap Allow.';
+    }
+
+    public function notifyRequestPermission(): void
+    {
+        $granted = LocalNotifications::requestPermission();
+        // Re-check after the system prompt (may still be false until the user answers)
+        $this->notifyHasPermission = LocalNotifications::hasPermission() || $granted;
+        $this->notifyStatusMessage = $this->notifyHasPermission
+            ? 'Permission granted. Tap “Show now” to post a notification (Allow alone does not send one).'
+            : 'If you saw a system prompt, accept it, then tap Check permission. Allow does not send a notification by itself.';
+    }
+
+    public function notifyShowNow(): void
+    {
+        // Ensure permission first when possible
+        if (! LocalNotifications::hasPermission()) {
+            LocalNotifications::requestPermission();
+            $this->notifyHasPermission = LocalNotifications::hasPermission();
+        }
+
+        $title = trim($this->notifyTitle) !== '' ? trim($this->notifyTitle) : 'Notification';
+        $body = trim($this->notifyBody) !== '' ? trim($this->notifyBody) : 'Hello!';
+        $result = LocalNotifications::show($title, $body);
+
+        if ($result['success'] ?? false) {
+            $this->notifyLastId = (string) ($result['id'] ?? '');
+            $this->notifyStatusMessage = 'Notification posted (id: '.$this->notifyLastId.'). Look for a banner at the top, or open Notification Center. Swipe to dismiss.';
+            Flux::toast(variant: 'success', text: 'Notification posted — check the top of the screen / Notification Center.');
+        } else {
+            $error = (string) ($result['error'] ?? 'Failed to show notification.');
+            $this->notifyStatusMessage = 'Error: '.$error.' Tip: tap Allow first, then Show now. On iOS, banners also need a rebuild that includes the latest native code.';
+            Flux::toast(variant: 'danger', text: $this->notifyStatusMessage);
+        }
+    }
+
+    public function notifySchedule(): void
+    {
+        $title = trim($this->notifyTitle) !== '' ? trim($this->notifyTitle) : 'Scheduled notification';
+        $body = trim($this->notifyBody) !== '' ? trim($this->notifyBody) : 'This is a delayed notification.';
+        $delay = max(1, $this->notifyDelaySeconds);
+        $result = LocalNotifications::schedule($title, $body, $delay);
+
+        if ($result['success'] ?? false) {
+            $this->notifyLastId = (string) ($result['id'] ?? '');
+            $this->notifyStatusMessage = "Scheduled in {$delay}s (id: {$this->notifyLastId}).";
+            Flux::toast(variant: 'success', text: "Notification scheduled in {$delay}s.");
+        } else {
+            $this->notifyStatusMessage = 'Error: '.($result['error'] ?? 'Failed to schedule.');
+            Flux::toast(variant: 'danger', text: $this->notifyStatusMessage);
+        }
+    }
+
+    public function notifyCancelLast(): void
+    {
+        if ($this->notifyLastId === '') {
+            $this->notifyStatusMessage = 'Error: No notification id to cancel.';
+
+            return;
+        }
+
+        $ok = LocalNotifications::cancel($this->notifyLastId);
+        $this->notifyStatusMessage = $ok
+            ? 'Cancelled: '.$this->notifyLastId
+            : 'Error: Cancel failed.';
+    }
+
+    public function notifyCancelAll(): void
+    {
+        $ok = LocalNotifications::cancelAll();
+        $this->notifyStatusMessage = $ok ? 'All local notifications cancelled.' : 'Error: Cancel all failed.';
+        $this->notifyLastId = '';
+    }
+
+    /**
+     * Show a dismissible on-screen banner, Flux toast, and native alert (when available).
+     */
+    private function notifyBackgroundTask(string $message, bool $success, string $detail = ''): void
+    {
+        $this->bgTaskBanner = $message;
+
+        Flux::toast(
+            variant: $success ? 'success' : 'danger',
+            text: $message,
+            duration: 5000,
+        );
+
+        // Native dismissible alert (OK button) when running inside NativePHP
+        if (function_exists('nativephp_call')) {
+            $body = $detail !== ''
+                ? $message."\n\n".Str::limit($detail, 400)
+                : $message;
+
+            try {
+                Dialog::alert(
+                    $success ? 'Background task finished' : 'Background task failed',
+                    $body,
+                    ['OK']
+                )->show();
+            } catch (\Throwable) {
+                // Dialog bridge may not be registered; banner + toast still show.
+            }
+        }
     }
 
     private function logEvent(string $name, string $action, string $time, string $date): void

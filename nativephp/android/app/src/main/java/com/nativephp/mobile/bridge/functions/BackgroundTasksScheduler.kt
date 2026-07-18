@@ -108,6 +108,7 @@ object BackgroundTasksScheduler {
                 val bridge = com.nativephp.mobile.bridge.PHPBridge(context)
                 val output = bridge.runEphemeralArtisan(command)
                 markLastRun(context, id)
+                notifyTaskCompleted(context, id, command, output, success = true)
                 results.add(
                     mapOf(
                         "id" to id,
@@ -118,6 +119,7 @@ object BackgroundTasksScheduler {
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "runNow failed for $id", e)
+                notifyTaskCompleted(context, id, command, e.message ?: "error", success = false)
                 results.add(
                     mapOf(
                         "id" to id,
@@ -137,6 +139,44 @@ object BackgroundTasksScheduler {
             .edit()
             .putLong(taskId, System.currentTimeMillis())
             .apply()
+    }
+
+    /**
+     * System tray notification so you can verify WorkManager background runs
+     * without watching the app UI.
+     */
+    fun notifyTaskCompleted(
+        context: Context,
+        taskId: String,
+        command: String,
+        output: String,
+        success: Boolean,
+    ) {
+        try {
+            LocalNotificationsFunctions.ensureChannel(context)
+
+            if (!LocalNotificationsFunctions.hasPermission(context)) {
+                Log.w(TAG, "Task notification: permission not granted — attempting post anyway may fail")
+            }
+
+            val title = if (success) "Background task finished" else "Background task failed"
+            val snippet = output.trim().replace(Regex("\\s+"), " ")
+            val body = if (snippet.isEmpty()) {
+                "Command: $command"
+            } else {
+                "$command — ${snippet.take(160)}"
+            }
+
+            LocalNotificationsFunctions.showNotification(
+                context,
+                title,
+                body,
+                "bg_task_${taskId}_${System.currentTimeMillis()}"
+            )
+            Log.i(TAG, "Posted completion notification for $command")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to post task notification: ${e.message}", e)
+        }
     }
 
     private fun workName(taskId: String): String = WORK_PREFIX + taskId

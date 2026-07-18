@@ -1,5 +1,6 @@
 import Foundation
 import BackgroundTasks
+import UserNotifications
 
 // MARK: - Storage
 
@@ -257,11 +258,13 @@ enum BackgroundTasksScheduler {
 
             let output = runArtisan(command: command)
             BackgroundTasksStore.updateLastRun(id: id, at: now)
+            let success = !output.lowercased().contains("error: php runtime")
+            notifyTaskCompleted(id: id, command: command, output: output, success: success)
             results.append([
                 "id": id,
                 "command": command,
                 "output": output,
-                "success": true,
+                "success": success,
             ])
         }
 
@@ -277,6 +280,76 @@ enum BackgroundTasksScheduler {
         }
         print("BackgroundTasksScheduler: PHP runtime not booted, cannot run '\(command)'")
         return "error: PHP runtime not booted"
+    }
+
+    /// Posts a local notification so you can verify OS background runs without opening the app.
+    static func notifyTaskCompleted(id: String, command: String, output: String, success: Bool) {
+        // Must run notification center work on main; request permission if needed.
+        let semaphore = DispatchSemaphore(value: 0)
+
+        DispatchQueue.main.async {
+            LocalNotificationCenterDelegate.install()
+            let center = UNUserNotificationCenter.current()
+
+            center.getNotificationSettings { settings in
+                let authorized: Bool = {
+                    switch settings.authorizationStatus {
+                    case .authorized, .provisional, .ephemeral:
+                        return true
+                    default:
+                        return false
+                    }
+                }()
+
+                let post: () -> Void = {
+                    let content = UNMutableNotificationContent()
+                    content.title = success ? "Background task finished" : "Background task failed"
+                    let snippet = output
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                        .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+                    content.body = snippet.isEmpty
+                        ? "Command: \(command)"
+                        : "\(command) — \(String(snippet.prefix(160)))"
+                    content.sound = .default
+                    if #available(iOS 15.0, *) {
+                        content.interruptionLevel = .timeSensitive
+                    }
+
+                    let request = UNNotificationRequest(
+                        identifier: "bg_task_\(id)_\(Int(Date().timeIntervalSince1970))",
+                        content: content,
+                        trigger: nil // immediate
+                    )
+
+                    center.add(request) { error in
+                        if let error {
+                            print("BackgroundTasksScheduler: notification failed: \(error)")
+                        } else {
+                            print("BackgroundTasksScheduler: notification posted for \(command)")
+                        }
+                        semaphore.signal()
+                    }
+                }
+
+                if authorized {
+                    post()
+                } else {
+                    center.requestAuthorization(options: [.alert, .badge, .sound]) { granted, error in
+                        if let error {
+                            print("BackgroundTasksScheduler: auth error: \(error)")
+                        }
+                        print("BackgroundTasksScheduler: auth granted=\(granted)")
+                        if granted {
+                            post()
+                        } else {
+                            semaphore.signal()
+                        }
+                    }
+                }
+            }
+        }
+
+        _ = semaphore.wait(timeout: .now() + 15)
     }
 
     private static func ensurePhpReady() {
