@@ -19,6 +19,17 @@ func registerBridgeFunctions() {
     registry.register("BackgroundTasks.List", function: BackgroundTasksFunctions.List())
     registry.register("BackgroundTasks.Update", function: BackgroundTasksFunctions.Update())
     registry.register("BackgroundTasks.Delete", function: BackgroundTasksFunctions.Delete())
+    registry.register("BackgroundTasks.Sync", function: BackgroundTasksFunctions.Sync())
+    registry.register("BackgroundTasks.RunNow", function: BackgroundTasksFunctions.RunNow())
+
+    // BGTaskScheduler handlers must be registered before launch ends
+    NativePHPPluginRegistry.shared.registerOnAppLaunch("BackgroundTasks") {
+        BackgroundTasksScheduler.registerHandlersIfNeeded()
+    }
+    // After PHP is ready, schedule enabled tasks with the OS
+    NativePHPPluginRegistry.shared.registerOnAppReady("BackgroundTasks") {
+        BackgroundTasksScheduler.rescheduleAll()
+    }
 
     // Register plugin bridge functions
     registerPluginBridgeFunctions()

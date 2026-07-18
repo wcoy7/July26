@@ -177,3 +177,55 @@ test('it returns false when delete fails on native side', function () {
 
     expect(BackgroundTasks::delete('missing'))->toBeFalse();
 });
+
+test('it can sync tasks with the OS scheduler', function () {
+    global $mockNativePhpCalls;
+
+    $mockNativePhpCalls['BackgroundTasks.Sync'] = fn () => json_encode([
+        'success' => true,
+        'count' => 2,
+    ]);
+
+    expect(BackgroundTasks::sync())->toBeTrue();
+});
+
+test('it can run tasks immediately via runNow', function () {
+    global $mockNativePhpCalls;
+
+    $mockNativePhpCalls['BackgroundTasks.RunNow'] = function (string $payload) {
+        $data = json_decode($payload, true);
+        expect($data)->toBeArray();
+
+        return json_encode([
+            'success' => true,
+            'results' => [
+                ['id' => 'task-1', 'command' => 'inspire', 'output' => 'ok', 'success' => true],
+            ],
+        ]);
+    };
+
+    $result = BackgroundTasks::runNow();
+    expect($result['success'])->toBeTrue()
+        ->and($result['results'])->toHaveCount(1)
+        ->and($result['results'][0]['command'])->toBe('inspire');
+});
+
+test('it can run a single task immediately by id', function () {
+    global $mockNativePhpCalls;
+
+    $mockNativePhpCalls['BackgroundTasks.RunNow'] = function (string $payload) {
+        $data = json_decode($payload, true);
+        expect($data['id'])->toBe('only-me');
+
+        return json_encode([
+            'success' => true,
+            'results' => [
+                ['id' => 'only-me', 'command' => 'sync:data', 'output' => 'done', 'success' => true],
+            ],
+        ]);
+    };
+
+    $result = BackgroundTasks::runNow('only-me');
+    expect($result['success'])->toBeTrue()
+        ->and($result['results'][0]['id'])->toBe('only-me');
+});

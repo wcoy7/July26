@@ -9,7 +9,11 @@ namespace App\Plugins;
  * can be created, listed, updated, and deleted from PHP. Intervals follow the
  * official plugin guidance (minimum 15 minutes on mobile schedulers).
  *
- * Bridge methods: BackgroundTasks.Create|Get|List|Update|Delete
+ * Bridge methods:
+ *   BackgroundTasks.Create|Get|List|Update|Delete|Sync|RunNow
+ *
+ * Native layers schedule enabled tasks with the OS (WorkManager / BGTaskScheduler)
+ * and execute the stored artisan `command` when the OS fires a job.
  *
  * @see https://nativephp.com/plugins/nativephp/mobile-background-tasks
  */
@@ -121,7 +125,7 @@ class BackgroundTasks
     }
 
     /**
-     * Delete a task by id.
+     * Delete a task by id (also cancels OS scheduling).
      */
     public static function delete(string $id): bool
     {
@@ -138,6 +142,51 @@ class BackgroundTasks
         $result = json_decode($resultJson, true);
 
         return (bool) ($result['success'] ?? false);
+    }
+
+    /**
+     * Re-register all enabled tasks with the OS scheduler.
+     * Call on app boot if you manage tasks outside this plugin's CRUD helpers.
+     */
+    public static function sync(): bool
+    {
+        if (! function_exists('nativephp_call')) {
+            return false;
+        }
+
+        $resultJson = nativephp_call('BackgroundTasks.Sync', '{}');
+
+        if (empty($resultJson)) {
+            return false;
+        }
+
+        $result = json_decode($resultJson, true);
+
+        return (bool) ($result['success'] ?? false);
+    }
+
+    /**
+     * Immediately run one task (by id) or all enabled tasks, bypassing intervals/constraints.
+     * Useful for development/testing (similar to the official BackgroundTasks::runNow()).
+     *
+     * @return array{success: bool, results?: list<array<string, mixed>>, error?: string}
+     */
+    public static function runNow(?string $id = null): array
+    {
+        if (! function_exists('nativephp_call')) {
+            return ['success' => false, 'error' => 'NativePHP bridge not available'];
+        }
+
+        $payload = $id !== null && $id !== '' ? ['id' => $id] : [];
+        $resultJson = nativephp_call('BackgroundTasks.RunNow', json_encode($payload));
+
+        if (empty($resultJson)) {
+            return ['success' => false, 'error' => 'No response from native bridge'];
+        }
+
+        $result = json_decode($resultJson, true);
+
+        return is_array($result) ? $result : ['success' => false, 'error' => 'Invalid JSON response'];
     }
 
     /**

@@ -127,6 +127,7 @@ class BackgroundTasksFunctions {
             val tasks = loadTasks(context)
             tasks.add(task)
             saveTasks(context, tasks)
+            BackgroundTasksScheduler.rescheduleAll(context)
 
             return mapOf("success" to true, "task" to toMap(task))
         }
@@ -190,6 +191,7 @@ class BackgroundTasksFunctions {
             task.put("updatedAt", nowIso())
             tasks[index] = task
             saveTasks(context, tasks)
+            BackgroundTasksScheduler.rescheduleAll(context)
 
             return mapOf("success" to true, "task" to toMap(task))
         }
@@ -209,7 +211,24 @@ class BackgroundTasksFunctions {
             }
 
             saveTasks(context, tasks)
+            BackgroundTasksScheduler.cancel(context, id)
+            BackgroundTasksScheduler.rescheduleAll(context)
             return mapOf("success" to true)
+        }
+    }
+
+    class Sync(private val context: Context) : BridgeFunction {
+        override fun execute(parameters: Map<String, Any>): Map<String, Any> {
+            BackgroundTasksScheduler.rescheduleAll(context)
+            return mapOf("success" to true, "count" to loadTasks(context).size)
+        }
+    }
+
+    class RunNow(private val context: Context) : BridgeFunction {
+        override fun execute(parameters: Map<String, Any>): Map<String, Any> {
+            val onlyId = parameters["id"] as? String
+            val results = BackgroundTasksScheduler.runNow(context, onlyId)
+            return mapOf("success" to true, "results" to results)
         }
     }
 }

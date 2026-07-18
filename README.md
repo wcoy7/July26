@@ -87,6 +87,8 @@ Custom background-task registry inspired by [nativephp/mobile-background-tasks](
 | `BackgroundTasks::list()` | `BackgroundTasks.List` | `list<array>` |
 | `BackgroundTasks::update($id, $attributes)` | `BackgroundTasks.Update` | `?array` task |
 | `BackgroundTasks::delete($id)` | `BackgroundTasks.Delete` | `bool` |
+| `BackgroundTasks::sync()` | `BackgroundTasks.Sync` | `bool` — re-register with OS |
+| `BackgroundTasks::runNow($id = null)` | `BackgroundTasks.RunNow` | `array` — run immediately (dev/test) |
 
 Task shape:
 
@@ -124,16 +126,25 @@ $task = BackgroundTasks::create([
 
 BackgroundTasks::update($task['id'], ['enabled' => false]);
 BackgroundTasks::list();
+BackgroundTasks::sync(); // re-register with OS
+BackgroundTasks::runNow(); // force-run all enabled tasks now
 BackgroundTasks::delete($task['id']);
 ```
 
 Native implementations:
 
-- **iOS** (`BackgroundTasksPlugin.swift`): JSON registry in `UserDefaults`.
-- **Android** (`BackgroundTasksFunctions.kt`): JSON registry in `SharedPreferences`.
-- **Registration**: `BackgroundTasks.Create|Get|List|Update|Delete` on the bridge.
+- **iOS** (`BackgroundTasksPlugin.swift` + `BackgroundTasksScheduler`):
+  - JSON registry in `UserDefaults`
+  - Schedules `BGAppRefreshTask` / `BGProcessingTask` (`UIBackgroundModes` fetch+processing)
+  - On fire: boots PHP if needed and runs artisan `command` via `PersistentPHPRuntime`
+- **Android** (`BackgroundTasksFunctions.kt`, `BackgroundTasksScheduler.kt`, `BackgroundTaskWorker.kt`):
+  - JSON registry in `SharedPreferences`
+  - **WorkManager** periodic work per enabled task (constraints mapped to WorkManager constraints)
+  - On fire: `LaravelEnvironment.initializeForBackground()` + ephemeral PHP artisan
+  - Boot receiver re-schedules after reboot / app update
+- **Registration**: `BackgroundTasks.Create|Get|List|Update|Delete|Sync|RunNow`
 
-> **Note:** This custom plugin manages the **task registry** (CRUD). Full OS-level WorkManager / BGTaskScheduler execution of artisan commands (as in the paid official plugin) can be layered on top of these stored definitions later.
+**Platform notes (same as official plugin):** Android WorkManager min interval **15 minutes**. iOS BGTaskScheduler timing is best-effort (OS discretionary). Constraints like battery/storage/idle are Android-first; iOS maps network + charging onto processing tasks.
 
 ### `⚡time-clock` (Livewire Component)
 - **Controller (`time-clock.php`)**: Manages employee state transitions, validates PIN codes, updates shift history, refreshes GPS, Secure Storage actions, and haptic demo actions (`vibrateTap`, `vibrateSuccess`, `vibrateError`, `vibrateCancel`).
@@ -144,7 +155,7 @@ Native implementations:
 ## 🧪 Tests
 - **`tests/Feature/SecureStorageTest.php`**: Unit-style feature coverage for set/get/delete (including mocked `nativephp_call` success/failure paths).
 - **`tests/Feature/VibrationTest.php`**: Vibration vibrate/hasHaptics/cancel/pattern/preset coverage with mocked bridge calls.
-- **`tests/Feature/BackgroundTasksTest.php`**: Background task create/get/list/update/delete, interval clamping, and missing-bridge handling.
+- **`tests/Feature/BackgroundTasksTest.php`**: Background task CRUD, interval clamping, `sync()`, `runNow()`, and missing-bridge handling.
 - **`tests/Feature/TimeClockTest.php`**: Time-clock UI and behavior tests, including Secure Storage and Haptic modal markup and Livewire actions.
 
 ---

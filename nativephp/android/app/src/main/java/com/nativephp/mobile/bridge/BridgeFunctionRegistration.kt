@@ -30,6 +30,15 @@ fun registerBridgeFunctions(activity: FragmentActivity, context: Context) {
     registry.register("BackgroundTasks.List", BackgroundTasksFunctions.List(context))
     registry.register("BackgroundTasks.Update", BackgroundTasksFunctions.Update(context))
     registry.register("BackgroundTasks.Delete", BackgroundTasksFunctions.Delete(context))
+    registry.register("BackgroundTasks.Sync", BackgroundTasksFunctions.Sync(context))
+    registry.register("BackgroundTasks.RunNow", BackgroundTasksFunctions.RunNow(context))
+
+    // Re-sync WorkManager schedules after PHP/app is ready
+    try {
+        BackgroundTasksScheduler.rescheduleAll(context)
+    } catch (e: Exception) {
+        android.util.Log.w("BridgeRegistration", "BackgroundTasks schedule bootstrap failed: ${e.message}")
+    }
 
     // Register plugin bridge functions
     registerPluginBridgeFunctions(activity, context)
