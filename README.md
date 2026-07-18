@@ -1,103 +1,96 @@
 # Valley Inventory Service - Employee Time Portal
 
-A modern, native-compatible mobile application designed as an Employee Time Portal for Valley Inventory Service. The application tracks employee clock-in/out activities, breaks, and logs GPS coordinates using Leaflet and NativePHP Geolocation.
+A modern **NativePHP Mobile** app for Valley Inventory Service employees: PIN-based time clock, GPS punches, secure keychain storage, haptics — and a full **on-device background task system** that schedules and runs Laravel artisan commands even when the app is in the background.
+
+Built with Laravel, Livewire, Flux UI, and custom native plugins for iOS and Android.
 
 ---
 
 ## 🚀 High-Level Summary
-The **Employee Time Portal** provides a secure, streamlined interface for staff members to manage their daily shifts:
-- **PIN Verification**: Employees authenticate using a secure 4-digit PIN via an interactive on-screen keypad.
-- **Dynamic Digital Clock**: Features a real-time, responsive clock showing current local time and date.
-- **Shift & Break Logging**: Allows employees to transition between states (Clock In, Start Break, End Break, Clock Out) with automated validation and break-ending logic.
-- **GPS Location Tracking**: Pins employee geolocation coordinates during punch events and displays their location on an interactive OpenStreetMap Leaflet map.
-- **Secure Storage (Keychain)**: Demo UI on the time-clock screen to save, retrieve, and delete sensitive key/value pairs via the device secure store (iOS Keychain / Android EncryptedSharedPreferences).
-- **Haptic Feedback (Vibration)**: Demo UI to trigger single taps and preset patterns via a custom Vibration plugin (iOS Core Haptics / Android VibrationEffect), inspired by [jvdluk/pro-vibration](https://nativephp.com/plugins/jvdluk/pro-vibration).
-- **Background Tasks**: Custom on-device task registry with full CRUD (create/list/get/update/delete), inspired by [nativephp/mobile-background-tasks](https://nativephp.com/plugins/nativephp/mobile-background-tasks).
-- **Offline / Native Ready**: Designed to run as a mobile app utilizing NativePHP Mobile with offline fallbacks.
+
+### Core time portal
+- **PIN Verification** — 4-digit on-screen keypad with strong 100ms haptic feedback per key
+- **Dynamic Digital Clock** — Live local time and date
+- **Shift & Break Logging** — Clock In / Start Break / End Break / Clock Out
+- **GPS Location Tracking** — Leaflet map when a live fix is available; cached coordinates used for punches when GPS is unreachable
+- **Secure Storage (Keychain)** — KEYCHAIN modal for set/get/delete via iOS Keychain / Android EncryptedSharedPreferences
+- **Haptic Feedback** — Vibration plugin + optional Haptic Lab tester component
+
+### ⭐ Background Tasks (custom native plugin)
+A first-class **background job runner** inspired by [nativephp/mobile-background-tasks](https://nativephp.com/plugins/nativephp/mobile-background-tasks):
+
+| Capability | What it does |
+|------------|----------------|
+| **CRUD registry** | Create, list, get, update, delete task definitions on-device |
+| **OS scheduling** | Android **WorkManager** · iOS **BGTaskScheduler** |
+| **Artisan execution** | Runs stored Laravel `command`s when the OS fires the job |
+| **Constraints** | Wi‑Fi / any network / charging / battery / storage / idle |
+| **Long-running** | iOS `BGProcessingTask` path for heavier work |
+| **Sync / RunNow** | Re-register with the OS, or force-run immediately for testing |
+
+Tasks keep running on OS schedules after the user leaves the app (subject to platform rules — see notes below).
 
 ---
 
 ## 📦 Packages Used
 
-### PHP / Laravel Packages (`composer.json`)
-- **`nativephp/mobile`**: Core framework for compiling and packaging the Laravel application as a native iOS/Android mobile app.
-- **`livewire/livewire` (v4)**: Reactivity engine enabling dynamic UI updates without write-ups in heavy frontend JS frameworks.
-- **`livewire/flux` & `livewire/flux-pro`**: Tailwind UI component library providing elegant layout, input elements, buttons, and status badges.
-- **`livewire/blaze`**: Optimizes and accelerates rendering for blade-component-heavy layouts.
-- **`laravel/fortify`**: Frontend-agnostic authentication backend for managing user accounts, passwords, and security.
-- **`laravel/chisel`**: Laravel starter-kit/scaffolding tool.
-- **`laravel/tinker`**: Interactive shell utility for debugging the Laravel application in real-time.
+### PHP / Laravel (`composer.json`)
+- **`nativephp/mobile`** — Native iOS/Android shell + PHP runtime
+- **`livewire/livewire` (v4)** — Reactive UI
+- **`livewire/flux` & `livewire/flux-pro`** — UI components
+- **`livewire/blaze`** — Blade render optimization
+- **`laravel/fortify`** — Auth backend
+- **`laravel/chisel`** · **`laravel/tinker`**
 
-### NPM / Frontend Packages (`package.json`)
-- **`tailwindcss` (v4)**: Modern CSS utility framework.
-- **`@tailwindcss/vite`**: Custom integration package for compiling Tailwind V4 classes through Vite.
-- **`laravel-vite-plugin`**: Connects Vite with the Laravel backend for asset compilation.
-- **`@laravel/passkeys`**: Helper scripts for secure passkey/WebAuthn authentication.
-- **`vite`**: The asset bundler and development server.
-- **`concurrently`**: Command-line runner for managing Laravel and Vite services concurrently.
+### Frontend (`package.json`)
+- **`tailwindcss` (v4)** · **`@tailwindcss/vite`** · **`laravel-vite-plugin`** · **`vite`** · **`concurrently`** · **`@laravel/passkeys`**
 
 ---
 
-## 🛠 Custom Modules / Plugins Created
+## 🛠 Custom Native Plugins
 
-### `App\Plugins\Geolocation`
-Custom PHP wrapper over the NativePHP bridge. Invokes `Geolocation.GetLocation`, normalizes success/error payloads, and supports offline fallbacks when the native bridge is unavailable.
+### `App\Plugins\BackgroundTasks` ⭐
 
-### `App\Plugins\SecureStorage`
-Custom PHP API for secure key/value storage via the native bridge:
+Full background-task system: on-device registry **plus** real OS scheduling and artisan execution.
 
-| Method | Bridge call | Returns |
-|--------|-------------|---------|
-| `SecureStorage::set($key, $value)` | `SecureStorage.Set` | `bool` |
-| `SecureStorage::get($key)` | `SecureStorage.Get` | `?string` |
-| `SecureStorage::delete($key)` | `SecureStorage.Delete` | `bool` |
+#### Architecture
 
-Native implementations (registered on the bridge):
+```text
+PHP (BackgroundTasks::create/update/…)
+        │
+        ▼
+  Native bridge (Create|Update|Delete|Sync|RunNow)
+        │
+        ├─► Persist task JSON (UserDefaults / SharedPreferences)
+        │
+        └─► Schedule with OS
+              Android: WorkManager periodic work (per task)
+              iOS:     BGAppRefreshTask / BGProcessingTask
+                        │
+                        ▼ when OS fires
+              Boot PHP if needed → artisan <command> → done
+```
 
-- **iOS** (`nativephp/ios/NativePHP/Bridge/Plugins/SecureStoragePlugin.swift`): Keychain (`kSecClassGenericPassword`), accessible when unlocked on this device only.
-- **Android** (`nativephp/android/.../SecureStorageFunctions.kt`): `EncryptedSharedPreferences` (AES-256 via AndroidX Security Crypto).
-- **Registration**: `BridgeFunctionRegistration.swift` / `BridgeFunctionRegistration.kt` wire `SecureStorage.Set|Get|Delete` into the NativePHP bridge registry.
+#### API
 
-### `App\Plugins\Vibration`
-Custom haptic API (inspired by [jvdluk/pro-vibration](https://nativephp.com/plugins/jvdluk/pro-vibration)):
+| Method | Bridge | Returns |
+|--------|--------|---------|
+| `create($attributes)` | `BackgroundTasks.Create` | `?array` task |
+| `get($id)` | `BackgroundTasks.Get` | `?array` task |
+| `list()` | `BackgroundTasks.List` | list of tasks |
+| `update($id, $attributes)` | `BackgroundTasks.Update` | `?array` task |
+| `delete($id)` | `BackgroundTasks.Delete` | `bool` |
+| `sync()` | `BackgroundTasks.Sync` | `bool` — re-register all with OS |
+| `runNow($id = null)` | `BackgroundTasks.RunNow` | `array` — force run (dev/test) |
 
-| Method | Bridge call | Returns |
-|--------|-------------|---------|
-| `Vibration::vibrate($duration, $intensity, $sharpness?)` | `Vibration.Vibrate` | `bool` |
-| `Vibration::hasHaptics()` | `Vibration.HasHaptics` | `bool` |
-| `Vibration::cancelVibration()` | `Vibration.Cancel` | `bool` |
-| `Vibration::pattern($steps = [])` | builder → `Vibration.PlayPattern` | `VibrationPatternBuilder` |
-| `Vibration::preset($name)` | builder with preset steps | `VibrationPatternBuilder` |
-
-Presets: `success`, `error`, `warning`, `notification`, `double_click`.
-
-Native implementations:
-
-- **iOS** (`VibrationPlugin.swift`): Core Haptics (`CHHapticEngine`) with intensity + sharpness.
-- **Android** (`VibrationFunctions.kt`): `VibrationEffect` one-shot / waveform; intensity mapped to amplitude. Sharpness ignored. Requires `VIBRATE` permission.
-- **Registration**: `BridgeFunctionRegistration.swift` / `.kt`.
-
-### `App\Plugins\BackgroundTasks`
-Custom background-task registry inspired by [nativephp/mobile-background-tasks](https://nativephp.com/plugins/nativephp/mobile-background-tasks). Tasks are stored on-device and managed via CRUD bridge calls (intervals clamped to a **15-minute** minimum, matching mobile scheduler limits).
-
-| Method | Bridge call | Returns |
-|--------|-------------|---------|
-| `BackgroundTasks::create($attributes)` | `BackgroundTasks.Create` | `?array` task |
-| `BackgroundTasks::get($id)` | `BackgroundTasks.Get` | `?array` task |
-| `BackgroundTasks::list()` | `BackgroundTasks.List` | `list<array>` |
-| `BackgroundTasks::update($id, $attributes)` | `BackgroundTasks.Update` | `?array` task |
-| `BackgroundTasks::delete($id)` | `BackgroundTasks.Delete` | `bool` |
-| `BackgroundTasks::sync()` | `BackgroundTasks.Sync` | `bool` — re-register with OS |
-| `BackgroundTasks::runNow($id = null)` | `BackgroundTasks.RunNow` | `array` — run immediately (dev/test) |
-
-Task shape:
+#### Task shape
 
 ```php
 [
     'id' => 'uuid',
     'name' => 'sync:data',
-    'command' => 'sync:data',
-    'intervalMinutes' => 15,
+    'command' => 'inspire',           // artisan command string
+    'intervalMinutes' => 15,          // min 15 (mobile limit)
     'enabled' => true,
     'longRunning' => false,
     'constraints' => [
@@ -108,69 +101,130 @@ Task shape:
         'whenStorageNotLow' => false,
         'whenIdle' => false,
     ],
-    'createdAt' => '...',
-    'updatedAt' => '...',
+    'createdAt' => '…',
+    'updatedAt' => '…',
 ]
 ```
 
-Example:
+#### Example usage
 
 ```php
 use App\Plugins\BackgroundTasks;
 
+// Register a recurring background artisan job
 $task = BackgroundTasks::create([
-    'name' => 'sync:data',
-    'intervalMinutes' => 15,
-    'constraints' => ['onWifi' => true, 'whileCharging' => true],
+    'name' => 'hourly-inspire',
+    'command' => 'inspire',
+    'intervalMinutes' => 60,
+    'constraints' => [
+        'onAnyNetwork' => true,
+    ],
 ]);
 
-BackgroundTasks::update($task['id'], ['enabled' => false]);
+// Manage lifecycle
 BackgroundTasks::list();
-BackgroundTasks::sync(); // re-register with OS
-BackgroundTasks::runNow(); // force-run all enabled tasks now
+BackgroundTasks::update($task['id'], ['enabled' => true]);
+BackgroundTasks::sync();              // re-push schedules to the OS
+BackgroundTasks::runNow($task['id']); // test immediately (bypass interval)
 BackgroundTasks::delete($task['id']);
 ```
 
-Native implementations:
+#### Native implementation details
 
-- **iOS** (`BackgroundTasksPlugin.swift` + `BackgroundTasksScheduler`):
-  - JSON registry in `UserDefaults`
-  - Schedules `BGAppRefreshTask` / `BGProcessingTask` (`UIBackgroundModes` fetch+processing)
-  - On fire: boots PHP if needed and runs artisan `command` via `PersistentPHPRuntime`
-- **Android** (`BackgroundTasksFunctions.kt`, `BackgroundTasksScheduler.kt`, `BackgroundTaskWorker.kt`):
-  - JSON registry in `SharedPreferences`
-  - **WorkManager** periodic work per enabled task (constraints mapped to WorkManager constraints)
-  - On fire: `LaravelEnvironment.initializeForBackground()` + ephemeral PHP artisan
-  - Boot receiver re-schedules after reboot / app update
-- **Registration**: `BackgroundTasks.Create|Get|List|Update|Delete|Sync|RunNow`
+| Platform | Storage | Scheduler | Execution |
+|----------|---------|-----------|-----------|
+| **iOS** | `UserDefaults` JSON | `BGAppRefreshTask` (quick) · `BGProcessingTask` (longRunning / constrained) | `PersistentPHPRuntime::artisan()` (boots PHP on cold start if needed) |
+| **Android** | `SharedPreferences` JSON | **WorkManager** unique periodic work per task | `LaravelEnvironment.initializeForBackground()` + **ephemeral** PHP artisan |
 
-**Platform notes (same as official plugin):** Android WorkManager min interval **15 minutes**. iOS BGTaskScheduler timing is best-effort (OS discretionary). Constraints like battery/storage/idle are Android-first; iOS maps network + charging onto processing tasks.
+Also includes:
 
-### `⚡time-clock` (Livewire Component)
-- **Controller (`time-clock.php`)**: Manages employee state transitions, validates PIN codes, updates shift history, refreshes GPS, Secure Storage actions, and haptic demo actions (`vibrateTap`, `vibrateSuccess`, `vibrateError`, `vibrateCancel`).
-- **View (`time-clock.blade.php`)**: AlpineJS digital clock, PIN keypad, shift actions, Leaflet map (`wire:ignore`), status feedback, **HAPTIC** and **KEYCHAIN** Flux modals.
+- **iOS** `Info.plist`: `UIBackgroundModes` (`fetch`, `processing`) + `BGTaskSchedulerPermittedIdentifiers`
+- **Android** WorkManager dependency, boot/`MY_PACKAGE_REPLACED` receiver to re-schedule, `RECEIVE_BOOT_COMPLETED` + `WAKE_LOCK`
+- Bridge bootstrap on app ready / activity start so schedules survive relaunch
+
+#### Platform notes
+
+- **Android** WorkManager enforces a **15-minute** minimum interval (shorter values are clamped).
+- **iOS** BGTaskScheduler timing is **best-effort** (usage patterns, battery, Background App Refresh). Treat as “should run,” not “will run at exact times.”
+- **`runNow()`** is the reliable way to verify artisan execution during development.
+- iOS force-fire (Xcode LLDB, app backgrounded):
+
+```text
+e -l objc -- (void)[[BGTaskScheduler sharedScheduler] _simulateLaunchForTaskWithIdentifier:@"com.nativephp.background-tasks.refresh"]
+```
+
+Inspired by the official [nativephp/mobile-background-tasks](https://nativephp.com/plugins/nativephp/mobile-background-tasks) plugin, implemented as a **custom in-app plugin** for this project.
+
+---
+
+### `App\Plugins\SecureStorage`
+
+| Method | Bridge | Returns |
+|--------|--------|---------|
+| `set($key, $value)` | `SecureStorage.Set` | `bool` |
+| `get($key)` | `SecureStorage.Get` | `?string` |
+| `delete($key)` | `SecureStorage.Delete` | `bool` |
+
+- **iOS** Keychain · **Android** EncryptedSharedPreferences
+
+### `App\Plugins\Vibration`
+
+| Method | Bridge | Returns |
+|--------|--------|---------|
+| `vibrate($duration, $intensity, $sharpness?)` | `Vibration.Vibrate` | `bool` |
+| `hasHaptics()` | `Vibration.HasHaptics` | `bool` |
+| `cancelVibration()` | `Vibration.Cancel` | `bool` |
+| `pattern()` / `preset()` | `Vibration.PlayPattern` | builder / `bool` |
+
+Presets: `success`, `error`, `warning`, `notification`, `double_click`.  
+**iOS** Core Haptics · **Android** VibrationEffect.
+
+### `App\Plugins\Geolocation`
+
+`getCurrentPosition()` via `Geolocation.GetLocation`, with normalized errors and offline fallbacks.
+
+---
+
+## 🖥 Livewire UI
+
+### `⚡time-clock` (default home `/`)
+PIN keypad (haptic keys), digital clock, shift actions, optional GPS map, **KEYCHAIN** and **HAPTIC** modals.
+
+### `⚡vibration-tester` (Haptic Lab)
+Optional component for intensity/duration/preset experiments (`<livewire:vibration-tester />`).
 
 ---
 
 ## 🧪 Tests
-- **`tests/Feature/SecureStorageTest.php`**: Unit-style feature coverage for set/get/delete (including mocked `nativephp_call` success/failure paths).
-- **`tests/Feature/VibrationTest.php`**: Vibration vibrate/hasHaptics/cancel/pattern/preset coverage with mocked bridge calls.
-- **`tests/Feature/BackgroundTasksTest.php`**: Background task CRUD, interval clamping, `sync()`, `runNow()`, and missing-bridge handling.
-- **`tests/Feature/TimeClockTest.php`**: Time-clock UI and behavior tests, including Secure Storage and Haptic modal markup and Livewire actions.
+
+| File | Coverage |
+|------|----------|
+| `tests/Feature/BackgroundTasksTest.php` | CRUD, interval clamp, `sync()`, `runNow()` |
+| `tests/Feature/SecureStorageTest.php` | set/get/delete bridge mocks |
+| `tests/Feature/VibrationTest.php` | vibrate / patterns / presets |
+| `tests/Feature/VibrationTesterTest.php` | Haptic Lab UI actions |
+| `tests/Feature/TimeClockTest.php` | home route, PIN/shifts, haptics, GPS cache behavior |
+
+```bash
+php artisan test --compact \
+  tests/Feature/BackgroundTasksTest.php \
+  tests/Feature/SecureStorageTest.php \
+  tests/Feature/VibrationTest.php \
+  tests/Feature/TimeClockTest.php
+```
 
 ---
 
-## 📱 Running on device / simulator
-```bash
-# Frontend assets for iOS
-npm run build -- --mode=ios
+## 📱 Run on device / simulator
 
-# Simulator or connected iPhone (device picker / UDID)
-php artisan native:run ios
+```bash
+npm run build -- --mode=ios   # or --mode=android
+php artisan native:run ios    # or android
 # e.g. php artisan native:run ios 00008120-000C30A61A3B401E
 ```
 
-**Notes:**
-- Set `NATIVEPHP_APP_ID` and `NATIVEPHP_DEVELOPMENT_TEAM` in `.env` for physical device builds.
-- Free Apple Developer accounts are limited to **3** development apps installed per device.
-- Prefer keeping the project outside iCloud-synced folders (e.g. not `~/Documents` with Desktop & Documents iCloud) to avoid codesign “resource fork / Finder information” failures.
+**Notes**
+- Set `NATIVEPHP_APP_ID` and `NATIVEPHP_DEVELOPMENT_TEAM` in `.env` for physical devices.
+- Free Apple Developer accounts: max **3** development apps per device.
+- Prefer projects outside iCloud-synced Documents to avoid codesign xattr issues.
+- After adding background tasks, open the app once so schedules register; use `BackgroundTasks::runNow()` to verify execution quickly.
