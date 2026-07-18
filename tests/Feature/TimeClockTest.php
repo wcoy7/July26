@@ -16,10 +16,31 @@ if (! function_exists('nativephp_call')) {
     }
 }
 
-test('time clock component renders successfully', function () {
-    $this->get('/')
-        ->assertStatus(200)
+test('home page renders the time clock by default', function () {
+    $this->get(route('home'))
+        ->assertSuccessful()
         ->assertSeeLivewire('time-clock');
+});
+
+test('time clock component can be rendered', function () {
+    Livewire::test('time-clock')
+        ->assertStatus(200);
+});
+
+test('keypad presses trigger strong 100ms vibration', function () {
+    global $mockNativePhpCalls;
+
+    $mockNativePhpCalls['Vibration.HasHaptics'] = fn () => json_encode(['success' => true, 'supported' => true]);
+    $mockNativePhpCalls['Vibration.Vibrate'] = function (string $payload) {
+        $data = json_decode($payload, true);
+        expect($data['duration'])->toBe(100);
+        expect((float) $data['intensity'])->toEqual(0.75);
+
+        return json_encode(['success' => true]);
+    };
+
+    Livewire::test('time-clock')
+        ->call('vibrateKeypad');
 });
 
 test('it can validate PIN and show actions', function () {

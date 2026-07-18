@@ -1,7 +1,12 @@
 <div x-data="{
          validated: @entangle('validatedEmployee'),
          pin: '',
+         haptic() {
+             // Strong 100ms feedback via native bridge (non-blocking Livewire call)
+             this.$wire.vibrateKeypad();
+         },
          addDigit(digit) {
+             this.haptic();
              if (this.pin.length < 4) {
                  this.pin += digit;
                  if (this.pin.length === 4) {
@@ -10,9 +15,11 @@
              }
          },
          clear() {
+             this.haptic();
              this.pin = '';
          },
          backspace() {
+             this.haptic();
              this.pin = this.pin.slice(0, -1);
          },
          submit() {

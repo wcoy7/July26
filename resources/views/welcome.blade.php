@@ -5,14 +5,14 @@
         <!-- Leaflet Map CSS and JS -->
         <link rel="stylesheet" href="{{ asset('css/leaflet.css') }}" />
         <script src="{{ asset('js/leaflet.js') }}"></script>
-        
+
         <style>
             .leaflet-container {
                 font-family: inherit;
             }
         </style>
     </head>
-    <body class="min-h-screen bg-slate-50 dark:bg-zinc-950 flex flex-col justify-center items-center p-4">
+    <body class="min-h-screen bg-slate-50 dark:bg-zinc-950 flex flex-col justify-center items-center p-4 nativephp-safe-area">
         <!-- Floating Login Link in corner -->
         <div class="absolute top-4 right-4 z-50">
             @if (Route::has('login'))

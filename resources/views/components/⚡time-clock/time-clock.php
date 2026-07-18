@@ -1,6 +1,7 @@
 <?php
 
 use App\Plugins\Geolocation;
+use App\Plugins\Vibration;
 use Livewire\Component;
 
 new class extends Component
@@ -67,11 +68,19 @@ new class extends Component
         }
     }
 
+    /**
+     * Strong 100ms haptic feedback for keypad presses.
+     */
+    public function vibrateKeypad(): void
+    {
+        Vibration::vibrate(duration: 100, intensity: 0.75);
+    }
+
     public function validatePin(string $pin): void
     {
         $this->status = '';
 
-        $name = match($pin) {
+        $name = match ($pin) {
             '1234' => 'John Doe',
             '5678' => 'Jane Smith',
             '9012' => 'Bob Johnson',
@@ -80,12 +89,13 @@ new class extends Component
 
         if ($name === null) {
             $this->status = 'Error: Invalid PIN code.';
+
             return;
         }
 
         $this->validatedEmployee = $name;
         $this->validatedPin = $pin;
-        
+
         // Refresh GPS coordinates when PIN is validated
         $this->refreshLocation();
     }
