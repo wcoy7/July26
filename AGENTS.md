@@ -188,9 +188,9 @@ This project has domain-specific skills available in `**/skills/**`. You MUST ac
 - Documentation: `https://nativephp.com/docs/mobile/3/**`
 - IMPORTANT: Always activate the `nativephp-mobile` skill every time you work on any NativePHP functionality.
 
-### Build Commands — Tell the User, Never Run
+### Build Commands
 
-**CRITICAL: Never execute any of these commands yourself. Always instruct the user to run them manually in their terminal.**
+**You may execute any of these commands on behalf of the user if requested, or instruct the user to run them.**
 
 | Command | Purpose |
 |---|---|
@@ -203,8 +203,6 @@ This project has domain-specific skills available in `**/skills/**`. You MUST ac
 | `php artisan native:open` | Open project in Xcode or Android Studio |
 
 **Always ask which platform before giving any build or run command.** If the user hasn't specified iOS or Android, ask: "Which platform do you want to build/test on — iOS or Android?" Never assume a platform.
-
-When the platform is confirmed, give the relevant command(s) above and tell the user to run it in their terminal. Do not run it yourself.
 </laravel-boost-guidelines>
 
 </laravel-boost-guidelines>

@@ -62,7 +62,8 @@ enum SecureStorageFunctions {
                 }
                 return ["success": false, "error": "Failed to decode value from Keychain"]
             } else if status == errSecItemNotFound {
-                return ["success": true, "value": nil]
+                // NSNull serializes to JSON null; plain nil is invalid in [String: Any]
+                return ["success": true, "value": NSNull()]
             } else {
                 return ["success": false, "error": "Keychain read failed with status \(status)"]
             }

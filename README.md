@@ -10,6 +10,7 @@ The **Employee Time Portal** provides a secure, streamlined interface for staff 
 - **Dynamic Digital Clock**: Features a real-time, responsive clock showing current local time and date.
 - **Shift & Break Logging**: Allows employees to transition between states (Clock In, Start Break, End Break, Clock Out) with automated validation and break-ending logic.
 - **GPS Location Tracking**: Pins employee geolocation coordinates during punch events and displays their location on an interactive OpenStreetMap Leaflet map.
+- **Secure Storage (Keychain)**: Demo UI on the time-clock screen to save, retrieve, and delete sensitive key/value pairs via the device secure store (iOS Keychain / Android EncryptedSharedPreferences).
 - **Offline / Native Ready**: Designed to run as a mobile app utilizing NativePHP Mobile with offline fallbacks.
 
 ---
@@ -36,7 +37,48 @@ The **Employee Time Portal** provides a secure, streamlined interface for staff 
 ---
 
 ## 🛠 Custom Modules / Plugins Created
-- **`App\Plugins\Geolocation`**: A custom wrapper class that integrates with the NativePHP bridge. It invokes `Geolocation.GetLocation`, handles status outputs, and provides normalized error catching and fallback coordinate options.
-- **`⚡time-clock` (Livewire Component)**:
-  - **Controller (`time-clock.php`)**: Manages employee state transitions, validates user PIN codes, updates shift history arrays, and refreshes GPS geolocation data.
-  - **View (`time-clock.blade.php`)**: Features the AlpineJS-driven digital clock, the PIN visualizer, shift action states, a Leaflet-backed map element (safeguarded via `wire:ignore` from re-rendering glitches), and temporary action feedback notifications.
+
+### `App\Plugins\Geolocation`
+Custom PHP wrapper over the NativePHP bridge. Invokes `Geolocation.GetLocation`, normalizes success/error payloads, and supports offline fallbacks when the native bridge is unavailable.
+
+### `App\Plugins\SecureStorage`
+Custom PHP API for secure key/value storage via the native bridge:
+
+| Method | Bridge call | Returns |
+|--------|-------------|---------|
+| `SecureStorage::set($key, $value)` | `SecureStorage.Set` | `bool` |
+| `SecureStorage::get($key)` | `SecureStorage.Get` | `?string` |
+| `SecureStorage::delete($key)` | `SecureStorage.Delete` | `bool` |
+
+Native implementations (registered on the bridge):
+
+- **iOS** (`nativephp/ios/NativePHP/Bridge/Plugins/SecureStoragePlugin.swift`): Keychain (`kSecClassGenericPassword`), accessible when unlocked on this device only.
+- **Android** (`nativephp/android/.../SecureStorageFunctions.kt`): `EncryptedSharedPreferences` (AES-256 via AndroidX Security Crypto).
+- **Registration**: `BridgeFunctionRegistration.swift` / `BridgeFunctionRegistration.kt` wire `SecureStorage.Set|Get|Delete` into the NativePHP bridge registry.
+
+### `⚡time-clock` (Livewire Component)
+- **Controller (`time-clock.php`)**: Manages employee state transitions, validates PIN codes, updates shift history, refreshes GPS, and exposes Secure Storage actions (`saveSecureStorage`, `getSecureStorage`, `deleteSecureStorage`).
+- **View (`time-clock.blade.php`)**: AlpineJS digital clock, PIN keypad, shift actions, Leaflet map (`wire:ignore`), status feedback, plus a **KEYCHAIN** control that opens a Flux UI modal to set/get/delete secure storage entries.
+
+---
+
+## 🧪 Tests
+- **`tests/Feature/SecureStorageTest.php`**: Unit-style feature coverage for set/get/delete (including mocked `nativephp_call` success/failure paths).
+- **`tests/Feature/TimeClockTest.php`**: Time-clock UI and behavior tests, including Secure Storage modal markup and Livewire actions.
+
+---
+
+## 📱 Running on device / simulator
+```bash
+# Frontend assets for iOS
+npm run build -- --mode=ios
+
+# Simulator or connected iPhone (device picker / UDID)
+php artisan native:run ios
+# e.g. php artisan native:run ios 00008120-000C30A61A3B401E
+```
+
+**Notes:**
+- Set `NATIVEPHP_APP_ID` and `NATIVEPHP_DEVELOPMENT_TEAM` in `.env` for physical device builds.
+- Free Apple Developer accounts are limited to **3** development apps installed per device.
+- Prefer keeping the project outside iCloud-synced folders (e.g. not `~/Documents` with Desktop & Documents iCloud) to avoid codesign “resource fork / Finder information” failures.
